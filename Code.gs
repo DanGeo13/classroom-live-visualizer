@@ -1,178 +1,609 @@
-/**
- * Classroom Live Visualizer - Backend API
- * Deploy as a Web App (Execute as: Me, Access: Anyone).
- * This version is a headless JSON API only — the UI lives on GitHub Pages
- * and calls this endpoint via fetch(), avoiding the Apps Script iframe
- * camera/microphone permissions bug entirely.
- */
-
-const FOLDER_NAME = "Classroom Demonstrations";
-
-function doGet() {
-  return ContentService.createTextOutput(
-    JSON.stringify({ status: "ok", message: "Classroom Live Visualizer API is running." })
-  ).setMimeType(ContentService.MimeType.JSON);
-}
-
-function doPost(e) {
-  let responseObj;
-  try {
-    const payload = JSON.parse(e.postData.contents);
-    const action = payload.action;
-
-    if (action === "saveDemonstrationPackage") {
-      responseObj = saveDemonstrationPackage(
-        payload.base64Video,
-        payload.transcriptLog,
-        payload.meta
-      );
-    } else {
-      responseObj = { success: false, message: "Unknown action: " + action };
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Classroom Live Visualizer</title>
+  <style>
+    :root {
+      --bg:#0a0a0c; --panel:#15151a; --accent:#3ddc97; --tech-color:#ff6b6b;
+      --tool:#5aa9ff; --measure:#ffb84d; --key:#c792ea; --text:#f2f2f5; --muted:#8a8a94;
     }
-  } catch (err) {
-    responseObj = { success: false, message: "Server error: " + err.message };
+    * { box-sizing: border-box; }
+    html, body { margin:0; padding:0; background:var(--bg); color:var(--text);
+      font-family:'Segoe UI',Roboto,Arial,sans-serif; height:100%; overflow:hidden; }
+    #app { display:flex; flex-direction:column; height:100vh; }
+    #topbar { display:flex; align-items:center; justify-content:space-between;
+      padding:10px 18px; background:var(--panel); border-bottom:1px solid #232329;
+      z-index:20; flex-wrap:wrap; gap:8px; }
+    #topbar h1 { font-size:16px; margin:0; font-weight:600; letter-spacing:0.5px; }
+    #status-dot { width:10px; height:10px; border-radius:50%; background:#444; display:inline-block; margin-right:8px; transition:background 0.3s; }
+    #status-dot.live { background:#ff4757; box-shadow:0 0 8px #ff4757; animation:pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+    #controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button, select, input[type=text] {
+      background:#1f1f26; color:var(--text); border:1px solid #33333c;
+      padding:8px 12px; border-radius:6px; font-size:13px;
+    }
+    button { cursor:pointer; transition:background 0.2s; }
+    button:hover { background:#2a2a33; }
+    button.active { background:var(--accent); color:#05130c; border-color:var(--accent); }
+    button#finishBtn { background:var(--tech-color); color:#fff; font-weight:600; }
+    button#finishBtn:hover { background:#ff8787; }
+    button#overheadBtn.active { background:#ffb84d; color:#211200; border-color:#ffb84d; }
+    #titleInput { width:220px; }
+    #overheadSelect { display:none; }
+
+    #layout { flex:1; display:flex; overflow:hidden; }
+    #stage { position:relative; flex:1; overflow:hidden; background:#000;
+      display:flex; align-items:center; justify-content:center; }
+    #stageCanvas { width:100%; height:100%; background:#000; transition:transform 0.35s ease; }
+    #video, #overheadVideo { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+
+    #freeze-overlay { position:absolute; top:14px; left:14px; background:rgba(255,107,107,0.9);
+      color:#fff; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:600; display:none; z-index:15; }
+    #zoom-indicator { position:absolute; top:14px; right:14px; background:rgba(0,0,0,0.55);
+      color:var(--accent); padding:6px 12px; border-radius:20px; font-size:12px; display:none; z-index:15; }
+    #flip-indicator { position:absolute; top:50px; right:14px; background:rgba(0,0,0,0.55);
+      color:var(--tech-color); padding:6px 12px; border-radius:20px; font-size:12px; display:none; z-index:15; }
+    #overhead-indicator { position:absolute; top:86px; right:14px; background:rgba(0,0,0,0.55);
+      color:#ffb84d; padding:6px 12px; border-radius:20px; font-size:12px; display:none; z-index:15; }
+
+    #caption-zone { position:absolute; bottom:0; left:0; right:0; height:32%;
+      display:none; flex-direction:column; justify-content:flex-end;
+      padding:14px 24px 22px; background:linear-gradient(to top, rgba(0,0,0,0.85) 20%, rgba(0,0,0,0));
+      z-index:12; pointer-events:none; }
+    .badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:12px;
+      font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+    .badge.step { background:var(--accent); color:#062017; }
+    .badge.technique { background:var(--tech-color); color:#200606; }
+    #current-caption { font-size:clamp(20px, 3vw, 34px); font-weight:600; line-height:1.3;
+      text-shadow:0 2px 6px rgba(0,0,0,0.8); }
+    #history-strip { font-size:13px; color:var(--muted); margin-top:6px; max-height:40px; overflow:hidden; }
+
+    #listening-indicator { position:absolute; bottom:14px; left:14px; display:flex; align-items:center;
+      gap:6px; background:rgba(0,0,0,0.55); padding:6px 12px; border-radius:20px;
+      font-size:12px; color:var(--muted); z-index:15; }
+    #listening-indicator .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite; }
+
+    /* Live extraction side panel */
+    #sidepanel { width:280px; background:var(--panel); border-left:1px solid #232329;
+      padding:14px; overflow-y:auto; display:flex; flex-direction:column; gap:16px; flex-shrink:0; }
+    .panel-section h3 { font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted);
+      margin:0 0 8px 0; display:flex; align-items:center; gap:6px; }
+    .pdot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    .chip { display:flex; justify-content:space-between; align-items:center;
+      background:#1f1f26; border-radius:6px; padding:6px 10px; margin-bottom:6px;
+      font-size:13px; animation:slideIn 0.3s ease; }
+    .chip .time { color:var(--muted); font-size:11px; margin-left:8px; white-space:nowrap; }
+    @keyframes slideIn { from{opacity:0; transform:translateX(12px);} to{opacity:1; transform:translateX(0);} }
+    .tool { border-left:3px solid var(--tool); }
+    .measure { border-left:3px solid var(--measure); }
+    .tech { border-left:3px solid var(--tech-color); }
+    .key { border-left:3px solid var(--key); }
+    .empty { color:var(--muted); font-size:12px; font-style:italic; }
+
+    #export-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); display:none;
+      align-items:center; justify-content:center; z-index:100; }
+    #export-box { background:var(--panel); padding:30px 40px; border-radius:12px; text-align:center;
+      min-width:320px; border:1px solid #2a2a33; }
+    #export-box h2 { margin-top:0; font-size:18px; }
+    #export-status { color:var(--muted); font-size:14px; margin:10px 0; }
+    .spinner { width:36px; height:36px; border:4px solid #2a2a33; border-top-color:var(--accent);
+      border-radius:50%; animation:spin 0.9s linear infinite; margin:12px auto; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    #export-links a { color:var(--accent); display:block; margin-top:8px; text-decoration:none; }
+    #export-links a:hover { text-decoration:underline; }
+    #closeExport { margin-top:16px; }
+    #config-banner { display:none; background:#ff6b6b; color:#200606; font-size:13px;
+      padding:8px 18px; text-align:center; font-weight:600; }
+  </style>
+</head>
+<body>
+<div id="config-banner">Set APPS_SCRIPT_URL at the top of the script to your deployed Apps Script Web App URL before use.</div>
+<div id="app">
+  <div id="topbar">
+    <h1><span id="status-dot"></span>Classroom Live Visualizer</h1>
+    <div id="controls">
+      <input type="text" id="titleInput" placeholder="Recipe / technique / focus skill…">
+      <select id="cameraSelect" title="Switch main camera"></select>
+      <button id="overheadBtn" title="Add/remove overhead camera as picture-in-picture">Add Overhead Feed</button>
+      <select id="overheadSelect" title="Choose overhead camera"></select>
+      <button id="mirrorBtn" title="Mirror horizontally (M)">Mirror ⇋</button>
+      <button id="flipBtn" title="Flip upside down (F)">Flip 180° ↕</button>
+      <button id="freezeBtn" title="Freeze (Space)">Freeze ❄</button>
+      <button id="resetZoomBtn" title="Reset zoom">Reset Zoom</button>
+      <button id="finishBtn">Finish &amp; Save Demo</button>
+    </div>
+  </div>
+
+  <div id="layout">
+    <div id="stage">
+      <video id="video" autoplay playsinline muted></video>
+      <video id="overheadVideo" autoplay playsinline muted></video>
+      <canvas id="stageCanvas"></canvas>
+      <div id="freeze-overlay">FROZEN — press Space to resume</div>
+      <div id="zoom-indicator">Zoomed 2.5x</div>
+      <div id="flip-indicator">Flipped 180°</div>
+      <div id="overhead-indicator">Overhead PiP active</div>
+      <div id="listening-indicator"><span class="dot"></span>Listening (transcript hidden)</div>
+      <div id="caption-zone">
+        <div id="badge-row"></div>
+        <div id="current-caption">Listening…</div>
+        <div id="history-strip"></div>
+      </div>
+    </div>
+
+    <div id="sidepanel">
+      <div class="panel-section">
+        <h3><span class="pdot" style="background:var(--tool)"></span>Tools &amp; Equipment</h3>
+        <div id="toolList"><div class="empty">None detected yet…</div></div>
+      </div>
+      <div class="panel-section">
+        <h3><span class="pdot" style="background:var(--measure)"></span>Measurements</h3>
+        <div id="measureList"><div class="empty">None detected yet…</div></div>
+      </div>
+      <div class="panel-section">
+        <h3><span class="pdot" style="background:var(--tech-color)"></span>Techniques &amp; Safety</h3>
+        <div id="techList"><div class="empty">None detected yet…</div></div>
+      </div>
+      <div class="panel-section">
+        <h3><span class="pdot" style="background:var(--key)"></span>Key Terms</h3>
+        <div id="keyList"><div class="empty">None detected yet…</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="export-overlay">
+  <div id="export-box">
+    <h2>Saving Demonstration</h2>
+    <div class="spinner" id="spinner"></div>
+    <div id="export-status">Preparing upload…</div>
+    <div id="export-links"></div>
+    <button id="closeExport" style="display:none;">Close</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  // =====================================================================
+  // CONFIG
+  // =====================================================================
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxGOCwP9quMjn8Gbna-2VJaEPDOebcOSKGisrb7efke1ilvSGpjLEI1hUpqzU7-elyfJw/exec";
+  const SHOW_LIVE_CAPTIONS = false; // transcription/logging always runs regardless
+
+  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("PASTE_YOUR") !== -1) {
+    document.getElementById('config-banner').style.display = 'block';
   }
 
-  return ContentService.createTextOutput(JSON.stringify(responseObj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+  // ---------- Category detection config ----------
+  const MEASUREMENT_REGEX = /\b\d+(\.\d+)?\s*(g|kg|ml|l|cups?|tbsp|tsp|teaspoons?|tablespoons?|degrees?|°[CF]?|mm|cm|inches?|minutes?|mins?|seconds?|secs?|hours?|hrs?)\b/gi;
+  const TOOL_WORDS = ["knife","blade","pan","frying pan","saucepan","oven","mixer","whisk",
+    "spatula","tongs","grater","peeler","chopping board","thermometer",
+    "chisel","saw","drill","clamp","file","vice","press","hammer","screwdriver","sander","router"];
+  const KEY_TERM_FALLBACK = ["flour","sugar","salt","butter","oil","egg","dough","batter",
+    "timber","plywood","steel","aluminium","fabric","glue","paint","varnish"];
+  const STEP_PATTERNS = [
+    /^\s*first\b/i, /^\s*next\b/i, /^\s*then\b/i, /^\s*after that\b/i,
+    /^\s*now we\b/i, /^\s*step\s*\d+/i, /^\s*finally\b/i, /^\s*once .*then\b/i,
+    /^\s*let'?s (start|begin|move on)/i
+  ];
+  const TECHNIQUE_PATTERNS = [
+    /technique\s*:/i, /make sure to/i, /notice how/i, /hold the blade/i,
+    /ensure the temperature/i, /be careful/i, /safety (tip|first)/i,
+    /the key (is|here)/i, /important to/i, /watch (out|your)/i, /never/i, /always/i
+  ];
 
-function getOrCreateFolder_() {
-  const folders = DriveApp.getFoldersByName(FOLDER_NAME);
-  if (folders.hasNext()) {
-    return folders.next();
+  let mainStream = null, overheadStream = null, overheadActive = false;
+  let mediaRecorder = null, recordedChunks = [];
+  let currentZoom = 1, zoomOriginX = 0.5, zoomOriginY = 0.5;
+  let mirrored = false, flipped = false, frozen = false;
+  let recognizer = null, sessionStartTime = null;
+  let transcriptLog = [];
+  let currentDevices = [];
+  let rafId = null;
+  let thumbnailBase64 = null;
+  const seenTools = new Set(), seenMeasures = new Set(), seenKeys = new Set();
+
+  const mainVideo = document.getElementById('video');
+  const overheadVideo = document.getElementById('overheadVideo');
+  const canvas = document.getElementById('stageCanvas');
+  const ctx = canvas.getContext('2d');
+  const stage = document.getElementById('stage');
+
+  const statusDot = document.getElementById('status-dot');
+  const titleInput = document.getElementById('titleInput');
+  const cameraSelect = document.getElementById('cameraSelect');
+  const overheadBtn = document.getElementById('overheadBtn');
+  const overheadSelect = document.getElementById('overheadSelect');
+  const mirrorBtn = document.getElementById('mirrorBtn');
+  const flipBtn = document.getElementById('flipBtn');
+  const freezeBtn = document.getElementById('freezeBtn');
+  const resetZoomBtn = document.getElementById('resetZoomBtn');
+  const finishBtn = document.getElementById('finishBtn');
+  const freezeOverlay = document.getElementById('freeze-overlay');
+  const zoomIndicator = document.getElementById('zoom-indicator');
+  const flipIndicator = document.getElementById('flip-indicator');
+  const overheadIndicator = document.getElementById('overhead-indicator');
+  const currentCaption = document.getElementById('current-caption');
+  const badgeRow = document.getElementById('badge-row');
+  const historyStrip = document.getElementById('history-strip');
+  const captionZone = document.getElementById('caption-zone');
+  const listeningIndicator = document.getElementById('listening-indicator');
+  const toolList = document.getElementById('toolList');
+  const measureList = document.getElementById('measureList');
+  const techList = document.getElementById('techList');
+  const keyList = document.getElementById('keyList');
+
+  const exportOverlay = document.getElementById('export-overlay');
+  const exportStatus = document.getElementById('export-status');
+  const exportLinks = document.getElementById('export-links');
+  const spinner = document.getElementById('spinner');
+  const closeExportBtn = document.getElementById('closeExport');
+
+  if (SHOW_LIVE_CAPTIONS) { captionZone.style.display = 'flex'; listeningIndicator.style.display = 'none'; }
+  else { captionZone.style.display = 'none'; listeningIndicator.style.display = 'flex'; }
+
+  function classify(text) {
+    for (const p of STEP_PATTERNS) if (p.test(text)) return "STEP";
+    for (const p of TECHNIQUE_PATTERNS) if (p.test(text)) return "TECHNIQUE";
+    return "SPEECH";
   }
-  return DriveApp.createFolder(FOLDER_NAME);
-}
 
-function formatTimestamp_(date) {
-  const pad = (n) => String(n).padStart(2, '0');
-  const y = date.getFullYear();
-  const m = pad(date.getMonth() + 1);
-  const d = pad(date.getDate());
-  const hh = pad(date.getHours());
-  const mm = pad(date.getMinutes());
-  const ss = pad(date.getSeconds());
-  return `${y}-${m}-${d}_${hh}-${mm}-${ss}`;
-}
+  function elapsedTimeStr() {
+    if (!sessionStartTime) return "00:00:00";
+    const s = Math.floor((Date.now() - sessionStartTime) / 1000);
+    const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  }
 
-function formatReadableDateTime_(date) {
-  return Utilities.formatDate(date, Session.getScriptTimeZone() || "Australia/Sydney", "EEEE, MMMM d, yyyy 'at' h:mm a");
-}
+  function addChip(container, text, cssClass, seenSet) {
+    const norm = text.toLowerCase().trim();
+    if (seenSet.has(norm)) return;
+    seenSet.add(norm);
+    if (container.querySelector('.empty')) container.innerHTML = '';
+    const chip = document.createElement('div');
+    chip.className = 'chip ' + cssClass;
+    chip.innerHTML = `<span>${text}</span><span class="time">${elapsedTimeStr()}</span>`;
+    container.appendChild(chip);
+    container.scrollTop = container.scrollHeight;
+  }
 
-function buildStructuredSections_(transcriptLog) {
-  const steps = [];
-  const techniques = [];
-  const rawLines = [];
+  // Extracts categorized info from one finalized transcript line.
+  function extractCategories(text) {
+    const measureMatches = text.match(MEASUREMENT_REGEX);
+    if (measureMatches) {
+      measureMatches.forEach(m => addChip(measureList, m.trim(), 'measure', seenMeasures));
+    }
 
-  transcriptLog.forEach(function(entry) {
-    const line = `[${entry.time}] ${entry.text}`;
-    rawLines.push(line);
-    if (entry.type === "STEP") {
-      steps.push(line);
-    } else if (entry.type === "TECHNIQUE") {
-      techniques.push(line);
+    const lower = text.toLowerCase();
+    TOOL_WORDS.forEach(tool => {
+      if (lower.includes(tool)) addChip(toolList, tool, 'tool', seenTools);
+    });
+
+    // Key term: word(s) immediately following a measurement + "of"/"the", e.g.
+    // "200 grams of flour" -> "flour". Falls back to a small ingredient/material list.
+    const proximityMatch = /\b\d+(\.\d+)?\s*\w+\s+(?:of|the)\s+([a-z][a-z\s]{2,20})/i.exec(text);
+    if (proximityMatch) {
+      const term = proximityMatch[2].trim().split(/\s+/).slice(0, 2).join(' ');
+      addChip(keyList, term, 'key', seenKeys);
+    }
+    KEY_TERM_FALLBACK.forEach(term => {
+      if (lower.includes(term)) addChip(keyList, term, 'key', seenKeys);
+    });
+  }
+
+  // ---------- Canvas sizing ----------
+  function resizeCanvas() {
+    const rect = stage.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  function drawContain(videoEl, tx, ty, tw, th) {
+    const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+    if (!vw || !vh) return;
+    const scale = Math.min(tw / vw, th / vh);
+    const dw = vw * scale, dh = vh * scale;
+    const dx = tx + (tw - dw) / 2, dy = ty + (th - dh) / 2;
+    ctx.drawImage(videoEl, dx, dy, dw, dh);
+  }
+
+  function renderFrame() {
+    if (!frozen) {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      const originXpx = zoomOriginX * canvas.width, originYpx = zoomOriginY * canvas.height;
+      ctx.translate(originXpx, originYpx);
+      if (flipped) ctx.rotate(Math.PI);
+      if (mirrored) ctx.scale(-1, 1);
+      ctx.scale(currentZoom, currentZoom);
+      ctx.translate(-originXpx, -originYpx);
+      drawContain(mainVideo, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      if (overheadActive && overheadVideo.videoWidth) {
+        const pipW = canvas.width * 0.28;
+        const pipH = pipW * (overheadVideo.videoHeight / overheadVideo.videoWidth || 0.75);
+        const margin = 16;
+        const px = canvas.width - pipW - margin, py = canvas.height - pipH - margin;
+        ctx.save();
+        ctx.fillStyle = '#000';
+        ctx.fillRect(px - 3, py - 3, pipW + 6, pipH + 6);
+        drawContain(overheadVideo, px, py, pipW, pipH);
+        ctx.strokeStyle = '#ffb84d';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(px - 3, py - 3, pipW + 6, pipH + 6);
+        ctx.restore();
+      }
+    }
+    rafId = requestAnimationFrame(renderFrame);
+  }
+
+  function startRecorder() {
+    resizeCanvas();
+    const canvasStream = canvas.captureStream(30);
+    const audioTrack = mainStream.getAudioTracks()[0];
+    if (audioTrack) canvasStream.addTrack(audioTrack);
+
+    let mimeType = 'video/webm;codecs=vp9,opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+    try { mediaRecorder = new MediaRecorder(canvasStream, { mimeType }); }
+    catch (e) { mediaRecorder = new MediaRecorder(canvasStream); }
+
+    mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.start(1000);
+    sessionStartTime = Date.now();
+  }
+
+  async function initMainMedia(deviceId) {
+    if (mainStream) mainStream.getTracks().forEach(t => t.stop());
+    const constraints = {
+      video: { deviceId: deviceId ? { exact: deviceId } : undefined,
+        width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+      audio: true
+    };
+    mainStream = await navigator.mediaDevices.getUserMedia(constraints);
+    mainVideo.srcObject = mainStream;
+    statusDot.classList.add('live');
+
+    if (!mediaRecorder) {
+      resizeCanvas();
+      renderFrame();
+      startRecorder();
+      initSpeech();
+    }
+  }
+
+  async function enumerateCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    currentDevices = devices.filter(d => d.kind === 'videoinput');
+    [cameraSelect, overheadSelect].forEach(sel => {
+      const keepFirst = sel.id === 'overheadSelect' ? '<option value="">Choose overhead camera…</option>' : '';
+      sel.innerHTML = keepFirst;
+      currentDevices.forEach((d, i) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || `Camera ${i + 1}`;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
+  cameraSelect.addEventListener('change', async (e) => {
+    try { await initMainMedia(e.target.value); }
+    catch (err) { console.log("Camera switch failed:", err.message); }
+  });
+
+  overheadBtn.addEventListener('click', () => {
+    if (!overheadActive) overheadSelect.style.display = 'inline-block';
+    else stopOverhead();
+  });
+
+  overheadSelect.addEventListener('change', async (e) => {
+    const deviceId = e.target.value;
+    if (!deviceId) return;
+    try {
+      overheadStream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
+      });
+      overheadVideo.srcObject = overheadStream;
+      overheadActive = true;
+      overheadBtn.textContent = 'Remove Overhead Feed';
+      overheadBtn.classList.add('active');
+      overheadIndicator.style.display = 'block';
+      overheadSelect.style.display = 'none';
+    } catch (err) { console.log('Overhead camera failed to start:', err.message); }
+  });
+
+  function stopOverhead() {
+    if (overheadStream) overheadStream.getTracks().forEach(t => t.stop());
+    overheadStream = null; overheadActive = false;
+    overheadBtn.textContent = 'Add Overhead Feed';
+    overheadBtn.classList.remove('active');
+    overheadIndicator.style.display = 'none';
+    overheadSelect.style.display = 'none';
+    overheadSelect.value = '';
+  }
+
+  canvas.addEventListener('dblclick', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width, y = (e.clientY - rect.top) / rect.height;
+    if (currentZoom === 1) {
+      zoomOriginX = x; zoomOriginY = y; currentZoom = 2.5;
+      zoomIndicator.style.display = 'block';
+    } else {
+      currentZoom = 1; zoomOriginX = 0.5; zoomOriginY = 0.5;
+      zoomIndicator.style.display = 'none';
     }
   });
 
-  return { steps: steps, techniques: techniques, rawLines: rawLines };
-}
+  resetZoomBtn.addEventListener('click', () => {
+    currentZoom = 1; zoomOriginX = 0.5; zoomOriginY = 0.5;
+    zoomIndicator.style.display = 'none';
+  });
 
-function saveDemonstrationPackage(base64Video, transcriptLog, meta) {
-  try {
-    meta = meta || {};
-    const now = new Date();
-    const folder = getOrCreateFolder_();
-    const timestamp = formatTimestamp_(now);
+  function toggleMirror() { mirrored = !mirrored; mirrorBtn.classList.toggle('active', mirrored); }
+  mirrorBtn.addEventListener('click', toggleMirror);
 
-    let cleanBase64 = base64Video;
-    let mimeType = meta.mimeType || "video/webm";
-    const dataUrlMatch = /^data:(.+);base64,(.*)$/s.exec(base64Video);
-    if (dataUrlMatch) {
-      mimeType = dataUrlMatch[1];
-      cleanBase64 = dataUrlMatch[2];
-    }
-
-    const extension = mimeType.indexOf("mp4") !== -1 ? "mp4" : "webm";
-    const videoFileName = `Demo_${timestamp}.${extension}`;
-
-    const decodedBytes = Utilities.base64Decode(cleanBase64);
-    const videoBlob = Utilities.newBlob(decodedBytes, mimeType, videoFileName);
-    const videoFile = folder.createFile(videoBlob);
-    videoFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-
-    const sections = buildStructuredSections_(transcriptLog || []);
-
-    const durationSeconds = Math.round(meta.durationSeconds || 0);
-    const durMin = Math.floor(durationSeconds / 60);
-    const durSec = durationSeconds % 60;
-    const durationStr = `${durMin} min ${durSec} sec`;
-
-    const docName = `Demo Log_${timestamp}`;
-    const doc = DocumentApp.create(docName);
-    const body = doc.getBody();
-    body.clear();
-
-    body.appendParagraph("Classroom Demonstration Report")
-      .setHeading(DocumentApp.ParagraphHeading.TITLE);
-
-    body.appendParagraph("Demonstration Overview")
-      .setHeading(DocumentApp.ParagraphHeading.HEADING1);
-    body.appendParagraph(`Date & Time: ${formatReadableDateTime_(now)}`);
-    body.appendParagraph(`Total Duration: ${durationStr}`);
-
-    const videoPara = body.appendParagraph("Recorded Video: ");
-    videoPara.appendText(videoFile.getUrl()).setLinkUrl(videoFile.getUrl());
-
-    body.appendParagraph("Structured Procedural Steps")
-      .setHeading(DocumentApp.ParagraphHeading.HEADING1);
-    if (sections.steps.length > 0) {
-      sections.steps.forEach(function(step) {
-        body.appendListItem(step).setGlyphType(DocumentApp.GlyphType.NUMBER);
-      });
-    } else {
-      body.appendParagraph("No distinct steps were detected during this session.").setItalic(true);
-    }
-
-    body.appendParagraph("Key Techniques & Safety Cues")
-      .setHeading(DocumentApp.ParagraphHeading.HEADING1);
-    if (sections.techniques.length > 0) {
-      sections.techniques.forEach(function(tech) {
-        const li = body.appendListItem(tech);
-        li.setGlyphType(DocumentApp.GlyphType.BULLET);
-        li.editAsText().setForegroundColor("#c0392b");
-      });
-    } else {
-      body.appendParagraph("No technique or safety cues were detected during this session.").setItalic(true);
-    }
-
-    body.appendParagraph("Full Raw Transcript")
-      .setHeading(DocumentApp.ParagraphHeading.HEADING1);
-    if (sections.rawLines.length > 0) {
-      sections.rawLines.forEach(function(line) {
-        body.appendParagraph(line).setFontSize(10);
-      });
-    } else {
-      body.appendParagraph("No transcript captured.").setItalic(true);
-    }
-
-    doc.saveAndClose();
-
-    const docFile = DriveApp.getFileById(doc.getId());
-    docFile.moveTo(folder);
-    docFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-
-    return {
-      success: true,
-      videoUrl: videoFile.getUrl(),
-      docUrl: doc.getUrl(),
-      message: "Demonstration package saved successfully."
-    };
-
-  } catch (err) {
-    return {
-      success: false,
-      message: "Error saving demonstration: " + err.message
-    };
+  function toggleFlip() {
+    flipped = !flipped; flipBtn.classList.toggle('active', flipped);
+    flipIndicator.style.display = flipped ? 'block' : 'none';
   }
-}
+  flipBtn.addEventListener('click', toggleFlip);
+
+  function toggleFreeze() {
+    frozen = !frozen; freezeBtn.classList.toggle('active', frozen);
+    freezeOverlay.style.display = frozen ? 'block' : 'none';
+  }
+  freezeBtn.addEventListener('click', toggleFreeze);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); toggleFreeze(); }
+    if (e.key.toLowerCase() === 'm') { toggleMirror(); }
+    if (e.key.toLowerCase() === 'f') { toggleFlip(); }
+  });
+
+  function initSpeech() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    recognizer = new SpeechRecognition();
+    recognizer.continuous = true;
+    recognizer.interimResults = true;
+    recognizer.lang = 'en-AU';
+
+    recognizer.onresult = (event) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const text = result[0].transcript.trim();
+        if (result.isFinal) {
+          if (text.length > 0) {
+            const type = classify(text);
+            const time = elapsedTimeStr();
+            transcriptLog.push({ time, type, text });
+            renderCaption(text, type);
+            extractCategories(text);
+            if (type === 'TECHNIQUE') addChip(techList, text, 'tech', new Set()); // techniques always shown, no dedupe by exact text
+          }
+        } else {
+          interim = text;
+        }
+      }
+      if (interim) renderCaption(interim, "SPEECH", true);
+    };
+    recognizer.onerror = (e) => console.log('Speech recognition error', e.error);
+    recognizer.onend = () => { if (mainStream) setTimeout(() => { try { recognizer.start(); } catch (err) {} }, 400); };
+    try { recognizer.start(); } catch (e) { console.log('Could not start recognition', e); }
+  }
+
+  function renderCaption(text, type, isInterim) {
+    currentCaption.textContent = text;
+    badgeRow.innerHTML = '';
+    if (type === 'STEP') {
+      const b = document.createElement('span'); b.className = 'badge step'; b.textContent = 'Step';
+      badgeRow.appendChild(b);
+    } else if (type === 'TECHNIQUE') {
+      const b = document.createElement('span'); b.className = 'badge technique'; b.textContent = 'Technique / Safety';
+      badgeRow.appendChild(b);
+    }
+    if (!isInterim) {
+      const line = document.createElement('div');
+      line.textContent = `[${elapsedTimeStr()}] ${text}`;
+      historyStrip.prepend(line);
+      while (historyStrip.childNodes.length > 2) historyStrip.removeChild(historyStrip.lastChild);
+    }
+  }
+
+  finishBtn.addEventListener('click', async () => {
+    exportOverlay.style.display = 'flex';
+    exportStatus.textContent = 'Stopping recording…';
+    spinner.style.display = 'block';
+    closeExportBtn.style.display = 'none';
+    exportLinks.innerHTML = '';
+
+    if (recognizer) { try { recognizer.stop(); } catch (e) {} }
+
+    // Capture the last live frame as a thumbnail before stopping.
+    try { thumbnailBase64 = canvas.toDataURL('image/png'); } catch (e) { thumbnailBase64 = null; }
+
+    if (rafId) cancelAnimationFrame(rafId);
+
+    const durationSeconds = sessionStartTime ? (Date.now() - sessionStartTime) / 1000 : 0;
+    const sessionTitle = titleInput.value.trim();
+
+    mediaRecorder.onstop = async () => {
+      exportStatus.textContent = 'Encoding video…';
+      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+      const reader = new FileReader();
+      reader.onload = async function() {
+        const base64data = reader.result;
+        exportStatus.textContent = 'Uploading to Google Drive…';
+        try {
+          const resp = await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'saveDemonstrationPackage',
+              base64Video: base64data,
+              transcriptLog: transcriptLog,
+              sessionTitle: sessionTitle,
+              thumbnailBase64: thumbnailBase64,
+              meta: { durationSeconds: durationSeconds, mimeType: mediaRecorder.mimeType || 'video/webm' }
+            })
+          });
+          if (!resp.ok) throw new Error('Server responded with status ' + resp.status);
+          const result = await resp.json();
+          onSaveSuccess(result);
+        } catch (err) {
+          onSaveFailure(err);
+        }
+      };
+      reader.readAsDataURL(blob);
+    };
+    mediaRecorder.stop();
+  });
+
+  function onSaveSuccess(result) {
+    spinner.style.display = 'none';
+    if (result.success) {
+      exportStatus.textContent = 'Saved successfully!';
+      exportLinks.innerHTML = `
+        <a href="${result.videoUrl}" target="_blank">Open Video File</a>
+        <a href="${result.docUrl}" target="_blank">Open Demonstration Doc</a>`;
+    } else {
+      exportStatus.textContent = 'Error: ' + result.message;
+    }
+    closeExportBtn.style.display = 'inline-block';
+  }
+
+  function onSaveFailure(err) {
+    spinner.style.display = 'none';
+    exportStatus.textContent = 'Upload failed: ' + (err.message || err) + ' — check that your Apps Script deployment is redeployed with the latest code.';
+    closeExportBtn.style.display = 'inline-block';
+  }
+
+  closeExportBtn.addEventListener('click', () => { exportOverlay.style.display = 'none'; });
+
+  async function boot() {
+    try {
+      resizeCanvas();
+      await initMainMedia(null);
+      await enumerateCameras();
+    } catch (err) {
+      console.log('Camera/mic access error:', err.message);
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
