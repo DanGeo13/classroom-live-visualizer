@@ -35,11 +35,44 @@
     #titleInput { width:220px; }
     #overheadSelect { display:none; }
 
+    /* ---- Split layout: main feed (left) | right column (keywords + overhead) ---- */
     #layout { flex:1; display:flex; overflow:hidden; }
-    #stage { position:relative; flex:1; overflow:hidden; background:#000;
+    #mainCol { position:relative; flex:1; overflow:hidden; background:#000;
       display:flex; align-items:center; justify-content:center; }
     #stageCanvas { width:100%; height:100%; background:#000; transition:transform 0.35s ease; }
-    #video, #overheadVideo { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+    #video, #overheadVideoHidden { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+
+    #rightCol { width:300px; flex-shrink:0; display:flex; flex-direction:column;
+      background:var(--panel); border-left:1px solid #232329; }
+
+    /* Keyword panel occupies the top portion (grows to fill when no overhead feed) */
+    #sidepanel { flex:1; min-height:0; padding:14px; overflow-y:auto;
+      display:flex; flex-direction:column; gap:16px; }
+    .panel-section h3 { font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted);
+      margin:0 0 8px 0; display:flex; align-items:center; gap:6px; }
+    .pdot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    .chip { display:flex; justify-content:space-between; align-items:center;
+      background:#1f1f26; border-radius:6px; padding:6px 10px; margin-bottom:6px;
+      font-size:13px; animation:chipIn 1.4s ease; }
+    .chip .time { color:var(--muted); font-size:11px; margin-left:8px; white-space:nowrap; }
+    @keyframes chipIn {
+      0% { opacity:0; transform:translateX(12px); background:#2a3f36; }
+      15% { opacity:1; transform:translateX(0); background:#2a3f36; }
+      100% { background:#1f1f26; }
+    }
+    .tool { border-left:3px solid var(--tool); }
+    .measure { border-left:3px solid var(--measure); }
+    .tech { border-left:3px solid var(--tech-color); }
+    .key { border-left:3px solid var(--key); }
+    .empty { color:var(--muted); font-size:12px; font-style:italic; }
+
+    /* Overhead feed box — a separate, non-overlapping region below the keyword panel */
+    #overheadBox { display:none; flex-shrink:0; border-top:1px solid #232329; padding:10px 14px 14px; }
+    #overheadBox h3 { font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#ffb84d;
+      margin:0 0 8px 0; }
+    #overheadFrame { position:relative; width:100%; aspect-ratio:16/9; background:#000;
+      border:2px solid #ffb84d; border-radius:6px; overflow:hidden; }
+    #overheadVideo { width:100%; height:100%; object-fit:contain; background:#000; }
 
     #freeze-overlay { position:absolute; top:14px; left:14px; background:rgba(255,107,107,0.9);
       color:#fff; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:600; display:none; z-index:15; }
@@ -47,8 +80,6 @@
       color:var(--accent); padding:6px 12px; border-radius:20px; font-size:12px; display:none; z-index:15; }
     #flip-indicator { position:absolute; top:50px; right:14px; background:rgba(0,0,0,0.55);
       color:var(--tech-color); padding:6px 12px; border-radius:20px; font-size:12px; display:none; z-index:15; }
-    #overhead-indicator { position:absolute; top:86px; right:14px; background:rgba(0,0,0,0.55);
-      color:#ffb84d; padding:6px 12px; border-radius:20px; font-size:12px; display:none; z-index:15; }
 
     #caption-zone { position:absolute; bottom:0; left:0; right:0; height:32%;
       display:none; flex-direction:column; justify-content:flex-end;
@@ -66,23 +97,6 @@
       gap:6px; background:rgba(0,0,0,0.55); padding:6px 12px; border-radius:20px;
       font-size:12px; color:var(--muted); z-index:15; }
     #listening-indicator .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite; }
-
-    /* Live extraction side panel */
-    #sidepanel { width:280px; background:var(--panel); border-left:1px solid #232329;
-      padding:14px; overflow-y:auto; display:flex; flex-direction:column; gap:16px; flex-shrink:0; }
-    .panel-section h3 { font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted);
-      margin:0 0 8px 0; display:flex; align-items:center; gap:6px; }
-    .pdot { width:8px; height:8px; border-radius:50%; display:inline-block; }
-    .chip { display:flex; justify-content:space-between; align-items:center;
-      background:#1f1f26; border-radius:6px; padding:6px 10px; margin-bottom:6px;
-      font-size:13px; animation:slideIn 0.3s ease; }
-    .chip .time { color:var(--muted); font-size:11px; margin-left:8px; white-space:nowrap; }
-    @keyframes slideIn { from{opacity:0; transform:translateX(12px);} to{opacity:1; transform:translateX(0);} }
-    .tool { border-left:3px solid var(--tool); }
-    .measure { border-left:3px solid var(--measure); }
-    .tech { border-left:3px solid var(--tech-color); }
-    .key { border-left:3px solid var(--key); }
-    .empty { color:var(--muted); font-size:12px; font-style:italic; }
 
     #export-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); display:none;
       align-items:center; justify-content:center; z-index:100; }
@@ -108,7 +122,7 @@
     <div id="controls">
       <input type="text" id="titleInput" placeholder="Recipe / technique / focus skill…">
       <select id="cameraSelect" title="Switch main camera"></select>
-      <button id="overheadBtn" title="Add/remove overhead camera as picture-in-picture">Add Overhead Feed</button>
+      <button id="overheadBtn" title="Add/remove overhead camera">Add Overhead Feed</button>
       <select id="overheadSelect" title="Choose overhead camera"></select>
       <button id="mirrorBtn" title="Mirror horizontally (M)">Mirror ⇋</button>
       <button id="flipBtn" title="Flip upside down (F)">Flip 180° ↕</button>
@@ -119,14 +133,13 @@
   </div>
 
   <div id="layout">
-    <div id="stage">
+    <div id="mainCol">
       <video id="video" autoplay playsinline muted></video>
-      <video id="overheadVideo" autoplay playsinline muted></video>
+      <video id="overheadVideoHidden" autoplay playsinline muted></video>
       <canvas id="stageCanvas"></canvas>
       <div id="freeze-overlay">FROZEN — press Space to resume</div>
       <div id="zoom-indicator">Zoomed 2.5x</div>
       <div id="flip-indicator">Flipped 180°</div>
-      <div id="overhead-indicator">Overhead PiP active</div>
       <div id="listening-indicator"><span class="dot"></span>Listening (transcript hidden)</div>
       <div id="caption-zone">
         <div id="badge-row"></div>
@@ -135,22 +148,29 @@
       </div>
     </div>
 
-    <div id="sidepanel">
-      <div class="panel-section">
-        <h3><span class="pdot" style="background:var(--tool)"></span>Tools &amp; Equipment</h3>
-        <div id="toolList"><div class="empty">None detected yet…</div></div>
+    <div id="rightCol">
+      <div id="sidepanel">
+        <div class="panel-section">
+          <h3><span class="pdot" style="background:var(--tool)"></span>Tools &amp; Equipment</h3>
+          <div id="toolList"><div class="empty">None detected yet…</div></div>
+        </div>
+        <div class="panel-section">
+          <h3><span class="pdot" style="background:var(--measure)"></span>Measurements</h3>
+          <div id="measureList"><div class="empty">None detected yet…</div></div>
+        </div>
+        <div class="panel-section">
+          <h3><span class="pdot" style="background:var(--tech-color)"></span>Techniques &amp; Safety</h3>
+          <div id="techList"><div class="empty">None detected yet…</div></div>
+        </div>
+        <div class="panel-section">
+          <h3><span class="pdot" style="background:var(--key)"></span>Key Terms</h3>
+          <div id="keyList"><div class="empty">None detected yet…</div></div>
+        </div>
       </div>
-      <div class="panel-section">
-        <h3><span class="pdot" style="background:var(--measure)"></span>Measurements</h3>
-        <div id="measureList"><div class="empty">None detected yet…</div></div>
-      </div>
-      <div class="panel-section">
-        <h3><span class="pdot" style="background:var(--tech-color)"></span>Techniques &amp; Safety</h3>
-        <div id="techList"><div class="empty">None detected yet…</div></div>
-      </div>
-      <div class="panel-section">
-        <h3><span class="pdot" style="background:var(--key)"></span>Key Terms</h3>
-        <div id="keyList"><div class="empty">None detected yet…</div></div>
+
+      <div id="overheadBox">
+        <h3>Overhead Feed</h3>
+        <div id="overheadFrame"><video id="overheadVideo" autoplay playsinline muted></video></div>
       </div>
     </div>
   </div>
@@ -168,17 +188,13 @@
 
 <script>
 (function() {
-  // =====================================================================
-  // CONFIG
-  // =====================================================================
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxGOCwP9quMjn8Gbna-2VJaEPDOebcOSKGisrb7efke1ilvSGpjLEI1hUpqzU7-elyfJw/exec";
-  const SHOW_LIVE_CAPTIONS = false; // transcription/logging always runs regardless
+  const SHOW_LIVE_CAPTIONS = false;
 
   if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("PASTE_YOUR") !== -1) {
     document.getElementById('config-banner').style.display = 'block';
   }
 
-  // ---------- Category detection config ----------
   const MEASUREMENT_REGEX = /\b\d+(\.\d+)?\s*(g|kg|ml|l|cups?|tbsp|tsp|teaspoons?|tablespoons?|degrees?|°[CF]?|mm|cm|inches?|minutes?|mins?|seconds?|secs?|hours?|hrs?)\b/gi;
   const TOOL_WORDS = ["knife","blade","pan","frying pan","saucepan","oven","mixer","whisk",
     "spatula","tongs","grater","peeler","chopping board","thermometer",
@@ -203,21 +219,30 @@
   let recognizer = null, sessionStartTime = null;
   let transcriptLog = [];
   let currentDevices = [];
-  let rafId = null;
+  let displayRafId = null, recordRafId = null;
   let thumbnailBase64 = null;
   const seenTools = new Set(), seenMeasures = new Set(), seenKeys = new Set();
 
   const mainVideo = document.getElementById('video');
-  const overheadVideo = document.getElementById('overheadVideo');
-  const canvas = document.getElementById('stageCanvas');
-  const ctx = canvas.getContext('2d');
-  const stage = document.getElementById('stage');
+  const overheadVideoHidden = document.getElementById('overheadVideoHidden'); // unused placeholder, kept for layout symmetry
+  const overheadVideo = document.getElementById('overheadVideo'); // the ACTUAL visible + recorded overhead feed
+  const displayCanvas = document.getElementById('stageCanvas');
+  const displayCtx = displayCanvas.getContext('2d');
+  const mainCol = document.getElementById('mainCol');
+
+  // Hidden off-screen canvas used purely for composing the recorded file
+  // (main feed + overhead side-by-side when active), decoupled from the
+  // on-screen layout so the two feeds never visually overlap for the audience.
+  const recordCanvas = document.createElement('canvas');
+  const recordCtx = recordCanvas.getContext('2d');
+  recordCanvas.width = 1920; recordCanvas.height = 1080;
 
   const statusDot = document.getElementById('status-dot');
   const titleInput = document.getElementById('titleInput');
   const cameraSelect = document.getElementById('cameraSelect');
   const overheadBtn = document.getElementById('overheadBtn');
   const overheadSelect = document.getElementById('overheadSelect');
+  const overheadBox = document.getElementById('overheadBox');
   const mirrorBtn = document.getElementById('mirrorBtn');
   const flipBtn = document.getElementById('flipBtn');
   const freezeBtn = document.getElementById('freezeBtn');
@@ -226,7 +251,6 @@
   const freezeOverlay = document.getElementById('freeze-overlay');
   const zoomIndicator = document.getElementById('zoom-indicator');
   const flipIndicator = document.getElementById('flip-indicator');
-  const overheadIndicator = document.getElementById('overhead-indicator');
   const currentCaption = document.getElementById('current-caption');
   const badgeRow = document.getElementById('badge-row');
   const historyStrip = document.getElementById('history-strip');
@@ -261,6 +285,8 @@
     return `${hh}:${mm}:${ss}`;
   }
 
+  // Appends a new chip and auto-scrolls the panel so the newest entry is
+  // always visible; older entries flow upward out of view as the list grows.
   function addChip(container, text, cssClass, seenSet) {
     const norm = text.toLowerCase().trim();
     if (seenSet.has(norm)) return;
@@ -273,82 +299,90 @@
     container.scrollTop = container.scrollHeight;
   }
 
-  // Extracts categorized info from one finalized transcript line.
   function extractCategories(text) {
     const measureMatches = text.match(MEASUREMENT_REGEX);
-    if (measureMatches) {
-      measureMatches.forEach(m => addChip(measureList, m.trim(), 'measure', seenMeasures));
-    }
+    if (measureMatches) measureMatches.forEach(m => addChip(measureList, m.trim(), 'measure', seenMeasures));
 
     const lower = text.toLowerCase();
-    TOOL_WORDS.forEach(tool => {
-      if (lower.includes(tool)) addChip(toolList, tool, 'tool', seenTools);
-    });
+    TOOL_WORDS.forEach(tool => { if (lower.includes(tool)) addChip(toolList, tool, 'tool', seenTools); });
 
-    // Key term: word(s) immediately following a measurement + "of"/"the", e.g.
-    // "200 grams of flour" -> "flour". Falls back to a small ingredient/material list.
     const proximityMatch = /\b\d+(\.\d+)?\s*\w+\s+(?:of|the)\s+([a-z][a-z\s]{2,20})/i.exec(text);
     if (proximityMatch) {
       const term = proximityMatch[2].trim().split(/\s+/).slice(0, 2).join(' ');
       addChip(keyList, term, 'key', seenKeys);
     }
-    KEY_TERM_FALLBACK.forEach(term => {
-      if (lower.includes(term)) addChip(keyList, term, 'key', seenKeys);
-    });
+    KEY_TERM_FALLBACK.forEach(term => { if (lower.includes(term)) addChip(keyList, term, 'key', seenKeys); });
   }
 
-  // ---------- Canvas sizing ----------
-  function resizeCanvas() {
-    const rect = stage.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
+  function resizeDisplayCanvas() {
+    const rect = mainCol.getBoundingClientRect();
+    displayCanvas.width = rect.width;
+    displayCanvas.height = rect.height;
   }
-  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('resize', resizeDisplayCanvas);
 
-  function drawContain(videoEl, tx, ty, tw, th) {
+  function drawContain(targetCtx, videoEl, tx, ty, tw, th) {
     const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
     if (!vw || !vh) return;
     const scale = Math.min(tw / vw, th / vh);
     const dw = vw * scale, dh = vh * scale;
     const dx = tx + (tw - dw) / 2, dy = ty + (th - dh) / 2;
-    ctx.drawImage(videoEl, dx, dy, dw, dh);
+    targetCtx.drawImage(videoEl, dx, dy, dw, dh);
   }
 
-  function renderFrame() {
+  // Draws the main feed (with mirror/flip/zoom effects) into a given context/region.
+  function drawMainFeed(targetCtx, x, y, w, h) {
+    targetCtx.save();
+    targetCtx.beginPath();
+    targetCtx.rect(x, y, w, h);
+    targetCtx.clip();
+    targetCtx.fillStyle = '#000';
+    targetCtx.fillRect(x, y, w, h);
+    const originXpx = x + zoomOriginX * w, originYpx = y + zoomOriginY * h;
+    targetCtx.translate(originXpx, originYpx);
+    if (flipped) targetCtx.rotate(Math.PI);
+    if (mirrored) targetCtx.scale(-1, 1);
+    targetCtx.scale(currentZoom, currentZoom);
+    targetCtx.translate(-originXpx, -originYpx);
+    drawContain(targetCtx, mainVideo, x, y, w, h);
+    targetCtx.restore();
+  }
+
+  // ---------- On-screen preview (main feed only — overhead shown separately, live, in its own box) ----------
+  function renderDisplayFrame() {
     if (!frozen) {
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.save();
-      const originXpx = zoomOriginX * canvas.width, originYpx = zoomOriginY * canvas.height;
-      ctx.translate(originXpx, originYpx);
-      if (flipped) ctx.rotate(Math.PI);
-      if (mirrored) ctx.scale(-1, 1);
-      ctx.scale(currentZoom, currentZoom);
-      ctx.translate(-originXpx, -originYpx);
-      drawContain(mainVideo, 0, 0, canvas.width, canvas.height);
-      ctx.restore();
+      drawMainFeed(displayCtx, 0, 0, displayCanvas.width, displayCanvas.height);
+    }
+    displayRafId = requestAnimationFrame(renderDisplayFrame);
+  }
+
+  // ---------- Recording composite (main + overhead placed side-by-side, never overlapping) ----------
+  function renderRecordFrame() {
+    if (!frozen) {
+      recordCtx.fillStyle = '#000';
+      recordCtx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
 
       if (overheadActive && overheadVideo.videoWidth) {
-        const pipW = canvas.width * 0.28;
-        const pipH = pipW * (overheadVideo.videoHeight / overheadVideo.videoWidth || 0.75);
-        const margin = 16;
-        const px = canvas.width - pipW - margin, py = canvas.height - pipH - margin;
-        ctx.save();
-        ctx.fillStyle = '#000';
-        ctx.fillRect(px - 3, py - 3, pipW + 6, pipH + 6);
-        drawContain(overheadVideo, px, py, pipW, pipH);
-        ctx.strokeStyle = '#ffb84d';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(px - 3, py - 3, pipW + 6, pipH + 6);
-        ctx.restore();
+        const mainW = recordCanvas.width * 0.72;
+        const overheadW = recordCanvas.width - mainW;
+        drawMainFeed(recordCtx, 0, 0, mainW, recordCanvas.height);
+        recordCtx.save();
+        recordCtx.fillStyle = '#000';
+        recordCtx.fillRect(mainW, 0, overheadW, recordCanvas.height);
+        drawContain(recordCtx, overheadVideo, mainW + 8, 8, overheadW - 16, recordCanvas.height - 16);
+        recordCtx.strokeStyle = '#ffb84d';
+        recordCtx.lineWidth = 4;
+        recordCtx.strokeRect(mainW + 4, 4, overheadW - 8, recordCanvas.height - 8);
+        recordCtx.restore();
+      } else {
+        drawMainFeed(recordCtx, 0, 0, recordCanvas.width, recordCanvas.height);
       }
     }
-    rafId = requestAnimationFrame(renderFrame);
+    recordRafId = requestAnimationFrame(renderRecordFrame);
   }
 
   function startRecorder() {
-    resizeCanvas();
-    const canvasStream = canvas.captureStream(30);
+    const canvasStream = recordCanvas.captureStream(30);
     const audioTrack = mainStream.getAudioTracks()[0];
     if (audioTrack) canvasStream.addTrack(audioTrack);
 
@@ -374,8 +408,9 @@
     statusDot.classList.add('live');
 
     if (!mediaRecorder) {
-      resizeCanvas();
-      renderFrame();
+      resizeDisplayCanvas();
+      renderDisplayFrame();
+      renderRecordFrame();
       startRecorder();
       initSpeech();
     }
@@ -418,7 +453,7 @@
       overheadActive = true;
       overheadBtn.textContent = 'Remove Overhead Feed';
       overheadBtn.classList.add('active');
-      overheadIndicator.style.display = 'block';
+      overheadBox.style.display = 'block';
       overheadSelect.style.display = 'none';
     } catch (err) { console.log('Overhead camera failed to start:', err.message); }
   });
@@ -428,13 +463,13 @@
     overheadStream = null; overheadActive = false;
     overheadBtn.textContent = 'Add Overhead Feed';
     overheadBtn.classList.remove('active');
-    overheadIndicator.style.display = 'none';
+    overheadBox.style.display = 'none';
     overheadSelect.style.display = 'none';
     overheadSelect.value = '';
   }
 
-  canvas.addEventListener('dblclick', (e) => {
-    const rect = canvas.getBoundingClientRect();
+  displayCanvas.addEventListener('dblclick', (e) => {
+    const rect = displayCanvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width, y = (e.clientY - rect.top) / rect.height;
     if (currentZoom === 1) {
       zoomOriginX = x; zoomOriginY = y; currentZoom = 2.5;
@@ -492,7 +527,7 @@
             transcriptLog.push({ time, type, text });
             renderCaption(text, type);
             extractCategories(text);
-            if (type === 'TECHNIQUE') addChip(techList, text, 'tech', new Set()); // techniques always shown, no dedupe by exact text
+            if (type === 'TECHNIQUE') addChip(techList, text, 'tech', new Set());
           }
         } else {
           interim = text;
@@ -532,10 +567,10 @@
 
     if (recognizer) { try { recognizer.stop(); } catch (e) {} }
 
-    // Capture the last live frame as a thumbnail before stopping.
-    try { thumbnailBase64 = canvas.toDataURL('image/png'); } catch (e) { thumbnailBase64 = null; }
+    try { thumbnailBase64 = recordCanvas.toDataURL('image/png'); } catch (e) { thumbnailBase64 = null; }
 
-    if (rafId) cancelAnimationFrame(rafId);
+    if (displayRafId) cancelAnimationFrame(displayRafId);
+    if (recordRafId) cancelAnimationFrame(recordRafId);
 
     const durationSeconds = sessionStartTime ? (Date.now() - sessionStartTime) / 1000 : 0;
     const sessionTitle = titleInput.value.trim();
@@ -594,7 +629,7 @@
 
   async function boot() {
     try {
-      resizeCanvas();
+      resizeDisplayCanvas();
       await initMainMedia(null);
       await enumerateCameras();
     } catch (err) {
