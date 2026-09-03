@@ -224,7 +224,7 @@
 
 <script>
 (function() {
-  const APPS_SCRIPT_URL = "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE";
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxGOCwP9quMjn8Gbna-2VJaEPDOebcOSKGisrb7efke1ilvSGpjLEI1hUpqzU7-elyfJw/exec";
 
   const SHOW_LIVE_CAPTIONS = false;
   const LS_PREFIX = 'clv_';
