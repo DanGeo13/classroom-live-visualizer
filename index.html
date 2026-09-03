@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Classroom Live Visualizer</title>
+  <style>
+    :root {
+      --bg: #0a0a0c;
+      --panel: #15151a;
+      --accent: #3ddc97;
+      --step-color: #3ddc97;
+      --tech-color: #ff6b6b;
+      --text: #f2f2f5;
+      --muted: #8a8a94;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; background: var(--bg); color: var(--text);
+      font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+      height: 100%; overflow: hidden;
+    }
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    #topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 18px; background: var(--panel); border-bottom: 1px solid #232329;
+      z-index: 20;
+    }
+    #topbar h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: 0.5px; }
+    #status-dot { width: 10px; height: 10px; border-radius: 50%; background: #444; display: inline-block; margin-right: 8px; transition: background 0.3s; }
+    #status-dot.live { background: #ff4757; box-shadow: 0 0 8px #ff4757; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+    #controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button, select {
+      background: #1f1f26; color: var(--text); border: 1px solid #33333c;
+      padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #2a2a33; }
+    button.active { background: var(--accent); color: #05130c; border-color: var(--accent); }
+    button#finishBtn { background: var(--tech-color); color: #fff; font-weight: 600; }
+    button#finishBtn:hover { background: #ff8787; }
+
+    #stage {
+      position: relative; flex: 1; overflow: hidden; background: #000;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #video {
+      width: 100%; height: 100%; object-fit: contain; background: #000;
+      transition: transform 0.35s ease;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    #freeze-overlay {
+      position: absolute; top: 14px; left: 14px; background: rgba(255,107,107,0.9);
+      color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
+      display: none; z-index: 15;
+    }
+    #zoom-indicator {
+      position: absolute; top: 14px; right: 14px; background: rgba(0,0,0,0.55);
+      color: var(--accent); padding: 6px 12px; border-radius: 20px; font-size: 12px;
+      display: none; z-index: 15;
+    }
+
+    #caption-zone {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 32%; display: flex; flex-direction: column; justify-content: flex-end;
+      padding: 14px 24px 22px; background: linear-gradient(to top, rgba(0,0,0,0.85) 20%, rgba(0,0,0,0));
+      z-index: 12; pointer-events: none;
+    }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+    }
+    .badge.step { background: var(--step-color); color: #062017; }
+    .badge.technique { background: var(--tech-color); color: #200606; }
+    #current-caption {
+      font-size: clamp(20px, 3vw, 34px); font-weight: 600; line-height: 1.3;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+    }
+    #history-strip { font-size: 13px; color: var(--muted); margin-top: 6px; max-height: 40px; overflow: hidden; }
+
+    #export-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none;
+      align-items: center; justify-content: center; z-index: 100;
+    }
+    #export-box {
+      background: var(--panel); padding: 30px 40px; border-radius: 12px; text-align: center;
+      min-width: 320px; border: 1px solid #2a2a33;
+    }
+    #export-box h2 { margin-top: 0; font-size: 18px; }
+    #export-status { color: var(--muted); font-size: 14px; margin: 10px 0; }
+    .spinner {
+      width: 36px; height: 36px; border: 4px solid #2a2a33; border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.9s linear infinite; margin: 12px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #export-links a { color: var(--accent); display: block; margin-top: 8px; text-decoration: none; }
+    #export-links a:hover { text-decoration: underline; }
+    #closeExport { margin-top: 16px; }
+    #config-banner {
+      display: none; background: #ff6b6b; color: #200606; font-size: 13px;
+      padding: 8px 18px; text-align: center; font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+<div id="config-banner">Set APPS_SCRIPT_URL at the top of the script to your deployed Apps Script Web App URL before use.</div>
+<div id="app">
+  <div id="topbar">
+    <h1><span id="status-dot"></span>Classroom Live Visualizer</h1>
+    <div id="controls">
+      <select id="cameraSelect" title="Switch camera"></select>
+      <button id="mirrorBtn" title="Mirror (M)">Mirror ⇋</button>
+      <button id="freezeBtn" title="Freeze (Space)">Freeze ❄</button>
+      <button id="resetZoomBtn" title="Reset zoom">Reset Zoom</button>
+      <button id="finishBtn">Finish &amp; Save Demo</button>
+    </div>
+  </div>
+
+  <div id="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <div id="freeze-overlay">FROZEN — press Space to resume</div>
+    <div id="zoom-indicator">Zoomed 2.5x</div>
+    <div id="caption-zone">
+      <div id="badge-row"></div>
+      <div id="current-caption">Listening…</div>
+      <div id="history-strip"></div>
+    </div>
+  </div>
+</div>
+
+<div id="export-overlay">
+  <div id="export-box">
+    <h2>Saving Demonstration</h2>
+    <div class="spinner" id="spinner"></div>
+    <div id="export-status">Preparing upload…</div>
+    <div id="export-links"></div>
+    <button id="closeExport" style="display:none;">Close</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  const APPS_SCRIPT_URL = "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE";
+
+  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("PASTE_YOUR") !== -1) {
+    document.getElementById('config-banner').style.display = 'block';
+  }
+
+  let stream = null;
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let currentZoom = 1;
+  let mirrored = false;
+  let frozen = false;
+  let frozenFrameCanvas = document.createElement('canvas');
+  let recognizer = null;
+  let sessionStartTime = null;
+  let transcriptLog = [];
+  let currentDevices = [];
+
+  const video = document.getElementById('video');
+  const statusDot = document.getElementById('status-dot');
+  const cameraSelect = document.getElementById('cameraSelect');
+  const mirrorBtn = document.getElementById('mirrorBtn');
+  const freezeBtn = document.getElementById('freezeBtn');
+  const resetZoomBtn = document.getElementById('resetZoomBtn');
+  const finishBtn = document.getElementById('finishBtn');
+  const freezeOverlay = document.getElementById('freeze-overlay');
+  const zoomIndicator = document.getElementById('zoom-indicator');
+  const currentCaption = document.getElementById('current-caption');
+  const badgeRow = document.getElementById('badge-row');
+  const historyStrip = document.getElementById('history-strip');
+
+  const exportOverlay = document.getElementById('export-overlay');
+  const exportStatus = document.getElementById('export-status');
+  const exportLinks = document.getElementById('export-links');
+  const spinner = document.getElementById('spinner');
+  const closeExportBtn = document.getElementById('closeExport');
+
+  const STEP_PATTERNS = [
+    /^\s*first\b/i, /^\s*next\b/i, /^\s*then\b/i, /^\s*after that\b/i,
+    /^\s*now we\b/i, /^\s*step\s*\d+/i, /^\s*finally\b/i, /^\s*once .*then\b/i,
+    /^\s*let'?s (start|begin|move on)/i
+  ];
+  const TECHNIQUE_PATTERNS = [
+    /technique\s*:/i, /make sure to/i, /notice how/i, /hold the blade/i,
+    /ensure the temperature/i, /be careful/i, /safety (tip|first)/i,
+    /the key (is|here)/i, /important to/i, /watch (out|your)/i, /never/i, /always/i
+  ];
+
+  function classify(text) {
+    for (const p of STEP_PATTERNS) if (p.test(text)) return "STEP";
+    for (const p of TECHNIQUE_PATTERNS) if (p.test(text)) return "TECHNIQUE";
+    return "SPEECH";
+  }
+
+  function elapsedTimeStr() {
+    if (!sessionStartTime) return "00:00:00";
+    const s = Math.floor((Date.now() - sessionStartTime) / 1000);
+    const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  }
+
+  async function initMedia(deviceId) {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    const constraints = {
+      video: {
+        deviceId: deviceId ? { exact: deviceId } : undefined,
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30 }
+      },
+      audio: true
+    };
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    statusDot.classList.add('live');
+    startRecording();
+  }
+
+  async function enumerateCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    currentDevices = devices.filter(d => d.kind === 'videoinput');
+    cameraSelect.innerHTML = '';
+    currentDevices.forEach((d, i) => {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || `Camera ${i + 1}`;
+      cameraSelect.appendChild(opt);
+    });
+  }
+
+  cameraSelect.addEventListener('change', async (e) => {
+    try { await initMedia(e.target.value); }
+    catch (err) { currentCaption.textContent = "Camera switch failed: " + err.message; }
+  });
+
+  function startRecording() {
+    recordedChunks = [];
+    let mimeType = 'video/webm;codecs=vp9,opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+    try { mediaRecorder = new MediaRecorder(stream, { mimeType }); }
+    catch (e) { mediaRecorder = new MediaRecorder(stream); }
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+    mediaRecorder.start(1000);
+    sessionStartTime = Date.now();
+  }
+
+  video.addEventListener('dblclick', (e) => {
+    const rect = video.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    if (currentZoom === 1) {
+      video.style.transformOrigin = `${x}% ${y}%`;
+      applyZoom(2.5);
+    } else {
+      applyZoom(1);
+    }
+  });
+
+  function applyZoom(scale) {
+    currentZoom = scale;
+    const mirrorPart = mirrored ? 'scaleX(-1) ' : '';
+    video.style.transform = `${mirrorPart}scale(${scale})`;
+    zoomIndicator.style.display = scale !== 1 ? 'block' : 'none';
+  }
+
+  resetZoomBtn.addEventListener('click', () => {
+    video.style.transformOrigin = '50% 50%';
+    applyZoom(1);
+  });
+
+  function toggleMirror() {
+    mirrored = !mirrored;
+    mirrorBtn.classList.toggle('active', mirrored);
+    applyZoom(currentZoom);
+  }
+  mirrorBtn.addEventListener('click', toggleMirror);
+
+  function toggleFreeze() {
+    frozen = !frozen;
+    freezeBtn.classList.toggle('active', frozen);
+    freezeOverlay.style.display = frozen ? 'block' : 'none';
+    if (frozen) {
+      const canvas = frozenFrameCanvas;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/png');
+      video.style.backgroundImage = `url(${dataUrl})`;
+      video.style.backgroundSize = 'contain';
+      video.style.backgroundPosition = 'center';
+      video.style.backgroundRepeat = 'no-repeat';
+      video.pause();
+    } else {
+      video.style.backgroundImage = 'none';
+      video.play();
+    }
+  }
+  freezeBtn.addEventListener('click', toggleFreeze);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); toggleFreeze(); }
+    if (e.key.toLowerCase() === 'm') { toggleMirror(); }
+  });
+
+  function initSpeech() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      currentCaption.textContent = "Speech recognition not supported in this browser.";
+      return;
+    }
+    recognizer = new SpeechRecognition();
+    recognizer.continuous = true;
+    recognizer.interimResults = true;
+    recognizer.lang = 'en-AU';
+
+    recognizer.onresult = (event) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const text = result[0].transcript.trim();
+        if (result.isFinal) {
+          if (text.length > 0) {
+            const type = classify(text);
+            const time = elapsedTimeStr();
+            transcriptLog.push({ time, type, text });
+            renderCaption(text, type);
+          }
+        } else {
+          interim = text;
+        }
+      }
+      if (interim) renderCaption(interim, "SPEECH", true);
+    };
+
+    recognizer.onerror = (e) => console.log('Speech recognition error', e.error);
+
+    recognizer.onend = () => {
+      if (stream) {
+        setTimeout(() => { try { recognizer.start(); } catch (err) {} }, 400);
+      }
+    };
+
+    try { recognizer.start(); } catch (e) { console.log('Could not start recognition', e); }
+  }
+
+  function renderCaption(text, type, isInterim) {
+    currentCaption.textContent = text;
+    badgeRow.innerHTML = '';
+    if (type === 'STEP') {
+      const b = document.createElement('span');
+      b.className = 'badge step'; b.textContent = 'Step';
+      badgeRow.appendChild(b);
+    } else if (type === 'TECHNIQUE') {
+      const b = document.createElement('span');
+      b.className = 'badge technique'; b.textContent = 'Technique / Safety';
+      badgeRow.appendChild(b);
+    }
+    if (!isInterim) {
+      const line = document.createElement('div');
+      line.textContent = `[${elapsedTimeStr()}] ${text}`;
+      historyStrip.prepend(line);
+      while (historyStrip.childNodes.length > 2) historyStrip.removeChild(historyStrip.lastChild);
+    }
+  }
+
+  finishBtn.addEventListener('click', async () => {
+    exportOverlay.style.display = 'flex';
+    exportStatus.textContent = 'Stopping recording…';
+    spinner.style.display = 'block';
+    closeExportBtn.style.display = 'none';
+    exportLinks.innerHTML = '';
+
+    if (recognizer) { try { recognizer.stop(); } catch (e) {} }
+
+    const durationSeconds = sessionStartTime ? (Date.now() - sessionStartTime) / 1000 : 0;
+
+    mediaRecorder.onstop = async () => {
+      exportStatus.textContent = 'Encoding video…';
+      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+      const reader = new FileReader();
+      reader.onload = async function() {
+        const base64data = reader.result;
+        exportStatus.textContent = 'Uploading to Google Drive…';
+        try {
+          const resp = await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'saveDemonstrationPackage',
+              base64Video: base64data,
+              transcriptLog: transcriptLog,
+              meta: {
+                durationSeconds: durationSeconds,
+                mimeType: mediaRecorder.mimeType || 'video/webm'
+              }
+            })
+          });
+          const result = await resp.json();
+          onSaveSuccess(result);
+        } catch (err) {
+          onSaveFailure(err);
+        }
+      };
+      reader.readAsDataURL(blob);
+    };
+    mediaRecorder.stop();
+  });
+
+  function onSaveSuccess(result) {
+    spinner.style.display = 'none';
+    if (result.success) {
+      exportStatus.textContent = 'Saved successfully!';
+      exportLinks.innerHTML = `
+        <a href="${result.videoUrl}" target="_blank">Open Video File</a>
+        <a href="${result.docUrl}" target="_blank">Open Demonstration Doc</a>`;
+    } else {
+      exportStatus.textContent = 'Error: ' + result.message;
+    }
+    closeExportBtn.style.display = 'inline-block';
+  }
+
+  function onSaveFailure(err) {
+    spinner.style.display = 'none';
+    exportStatus.textContent = 'Upload failed: ' + (err.message || err);
+    closeExportBtn.style.display = 'inline-block';
+  }
+
+  closeExportBtn.addEventListener('click', () => { exportOverlay.style.display = 'none'; });
+
+  async function boot() {
+    try {
+      await initMedia(null);
+      await enumerateCameras();
+      initSpeech();
+    } catch (err) {
+      currentCaption.textContent = 'Camera/mic access error: ' + err.message;
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
