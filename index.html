@@ -1,55 +1,136 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Classroom Live Visualizer</title>
-<style>
-:root{--bg:#0a0a0c;--panel:#15151a;--accent:#3ddc97;--step-color:#3ddc97;--tech-color:#ff6b6b;--text:#f2f2f5;--muted:#8a8a94;}
-*{box-sizing:border-box;}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Segoe UI',Roboto,Arial,sans-serif;height:100%;overflow:hidden;}
-#app{display:flex;flex-direction:column;height:100vh;}
-#topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;background:var(--panel);border-bottom:1px solid #232329;z-index:20;flex-wrap:wrap;gap:8px;}
-#topbar h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.5px;}
-#status-dot{width:10px;height:10px;border-radius:50%;background:#444;display:inline-block;margin-right:8px;transition:background .3s;}
-#status-dot.live{background:#ff4757;box-shadow:0 0 8px #ff4757;animation:pulse 1.5s infinite;}
-@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
-#controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
-.selgroup{display:flex;flex-direction:column;font-size:10px;color:var(--muted);gap:2px;}
-button,select{background:#1f1f26;color:var(--text);border:1px solid #33333c;padding:8px 12px;border-radius:6px;font-size:13px;cursor:pointer;transition:background .2s;}
-button:hover{background:#2a2a33;}
-button.active{background:var(--accent);color:#05130c;border-color:var(--accent);}
-button#finishBtn{background:var(--tech-color);color:#fff;font-weight:600;}
-button#finishBtn:hover{background:#ff8787;}
-#stage{position:relative;flex:1;overflow:hidden;background:#000;display:flex;}
-.feed-wrap{position:relative;height:100%;flex-basis:100%;transition:flex-basis .35s ease;overflow:hidden;background:#000;cursor:pointer;border-right:2px solid #000;}
-.feed-wrap:last-child{border-right:none;}
-.feed-wrap.hidden{display:none;}
-.feed-wrap video{width:100%;height:100%;object-fit:contain;background:#000;transition:transform .35s ease;transform-origin:50% 50%;will-change:transform;}
-.feed-label{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.55);color:var(--muted);font-size:11px;padding:4px 10px;border-radius:12px;z-index:10;pointer-events:none;text-transform:uppercase;letter-spacing:.5px;}
-.feed-wrap.focused .feed-label{color:var(--accent);}
-#freeze-overlay{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(255,107,107,.9);color:#fff;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;display:none;z-index:15;}
-#zoom-indicator,#flip-indicator{position:absolute;top:14px;right:14px;background:rgba(0,0,0,.55);color:var(--accent);padding:6px 12px;border-radius:20px;font-size:12px;display:none;z-index:15;}
-#flip-indicator{top:50px;color:var(--tech-color);}
-#listening-indicator{position:absolute;bottom:14px;left:14px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.55);padding:6px 12px;border-radius:20px;font-size:12px;color:var(--muted);z-index:15;}
-#listening-indicator .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.5s infinite;}
-#caption-zone{position:absolute;bottom:0;left:0;right:0;height:32%;display:none;flex-direction:column;justify-content:flex-end;padding:14px 24px 22px;background:linear-gradient(to top,rgba(0,0,0,.85) 20%,rgba(0,0,0,0));z-index:12;pointer-events:none;}
-.badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
-.badge.step{background:var(--step-color);color:#062017;}
-.badge.technique{background:var(--tech-color);color:#200606;}
-#current-caption{font-size:clamp(20px,3vw,34px);font-weight:600;line-height:1.3;text-shadow:0 2px 6px rgba(0,0,0,.8);}
-#history-strip{font-size:13px;color:var(--muted);margin-top:6px;max-height:40px;overflow:hidden;}
-#export-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:100;}
-#export-box{background:var(--panel);padding:30px 40px;border-radius:12px;text-align:center;min-width:320px;border:1px solid #2a2a33;}
-#export-box h2{margin-top:0;font-size:18px;}
-#export-status{color:var(--muted);font-size:14px;margin:10px 0;}
-.spinner{width:36px;height:36px;border:4px solid #2a2a33;border-top-color:var(--accent);border-radius:50%;animation:spin .9s linear infinite;margin:12px auto;}
-@keyframes spin{to{transform:rotate(360deg);}}
-#export-links a{color:var(--accent);display:block;margin-top:8px;text-decoration:none;}
-#export-links a:hover{text-decoration:underline;}
-#closeExport{margin-top:16px;}
-#config-banner{display:none;background:#ff6b6b;color:#200606;font-size:13px;padding:8px 18px;text-align:center;font-weight:600;}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Classroom Live Visualizer</title>
+  <style>
+    :root {
+      --bg: #0a0a0c;
+      --panel: #15151a;
+      --accent: #3ddc97;
+      --step-color: #3ddc97;
+      --tech-color: #ff6b6b;
+      --text: #f2f2f5;
+      --muted: #8a8a94;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; background: var(--bg); color: var(--text);
+      font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+      height: 100%; overflow: hidden;
+    }
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    #topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 18px; background: var(--panel); border-bottom: 1px solid #232329;
+      z-index: 20; flex-wrap: wrap; gap: 8px;
+    }
+    #topbar h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: 0.5px; }
+    #status-dot { width: 10px; height: 10px; border-radius: 50%; background: #444; display: inline-block; margin-right: 8px; transition: background 0.3s; }
+    #status-dot.live { background: #ff4757; box-shadow: 0 0 8px #ff4757; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+    #controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button, select {
+      background: #1f1f26; color: var(--text); border: 1px solid #33333c;
+      padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #2a2a33; }
+    button.active { background: var(--accent); color: #05130c; border-color: var(--accent); }
+    button#finishBtn { background: var(--tech-color); color: #fff; font-weight: 600; }
+    button#finishBtn:hover { background: #ff8787; }
+    button#overheadBtn.active { background: #ffb84d; color: #211200; border-color: #ffb84d; }
+
+    #overheadSelect { display: none; }
+
+    #stage {
+      position: relative; flex: 1; overflow: hidden; background: #000;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #stageCanvas {
+      width: 100%; height: 100%; background: #000;
+      transition: transform 0.35s ease;
+      will-change: transform;
+    }
+
+    /* Hidden source video elements — never shown directly, only drawn
+       into the canvas frame by frame. */
+    #video, #overheadVideo { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+    #freeze-overlay {
+      position: absolute; top: 14px; left: 14px; background: rgba(255,107,107,0.9);
+      color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
+      display: none; z-index: 15;
+    }
+    #zoom-indicator {
+      position: absolute; top: 14px; right: 14px; background: rgba(0,0,0,0.55);
+      color: var(--accent); padding: 6px 12px; border-radius: 20px; font-size: 12px;
+      display: none; z-index: 15;
+    }
+    #flip-indicator {
+      position: absolute; top: 50px; right: 14px; background: rgba(0,0,0,0.55);
+      color: var(--tech-color); padding: 6px 12px; border-radius: 20px; font-size: 12px;
+      display: none; z-index: 15;
+    }
+    #overhead-indicator {
+      position: absolute; top: 86px; right: 14px; background: rgba(0,0,0,0.55);
+      color: #ffb84d; padding: 6px 12px; border-radius: 20px; font-size: 12px;
+      display: none; z-index: 15;
+    }
+
+    #caption-zone {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 32%; display: none; flex-direction: column; justify-content: flex-end;
+      padding: 14px 24px 22px; background: linear-gradient(to top, rgba(0,0,0,0.85) 20%, rgba(0,0,0,0));
+      z-index: 12; pointer-events: none;
+    }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+    }
+    .badge.step { background: var(--step-color); color: #062017; }
+    .badge.technique { background: var(--tech-color); color: #200606; }
+    #current-caption {
+      font-size: clamp(20px, 3vw, 34px); font-weight: 600; line-height: 1.3;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+    }
+    #history-strip { font-size: 13px; color: var(--muted); margin-top: 6px; max-height: 40px; overflow: hidden; }
+
+    #listening-indicator {
+      position: absolute; bottom: 14px; left: 14px; display: flex; align-items: center;
+      gap: 6px; background: rgba(0,0,0,0.55); padding: 6px 12px; border-radius: 20px;
+      font-size: 12px; color: var(--muted); z-index: 15;
+    }
+    #listening-indicator .dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+      animation: pulse 1.5s infinite;
+    }
+
+    #export-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none;
+      align-items: center; justify-content: center; z-index: 100;
+    }
+    #export-box {
+      background: var(--panel); padding: 30px 40px; border-radius: 12px; text-align: center;
+      min-width: 320px; border: 1px solid #2a2a33;
+    }
+    #export-box h2 { margin-top: 0; font-size: 18px; }
+    #export-status { color: var(--muted); font-size: 14px; margin: 10px 0; }
+    .spinner {
+      width: 36px; height: 36px; border: 4px solid #2a2a33; border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.9s linear infinite; margin: 12px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #export-links a { color: var(--accent); display: block; margin-top: 8px; text-decoration: none; }
+    #export-links a:hover { text-decoration: underline; }
+    #closeExport { margin-top: 16px; }
+    #config-banner {
+      display: none; background: #ff6b6b; color: #200606; font-size: 13px;
+      padding: 8px 18px; text-align: center; font-weight: 600;
+    }
+  </style>
 </head>
 <body>
 <div id="config-banner">Set APPS_SCRIPT_URL at the top of the script to your deployed Apps Script Web App URL before use.</div>
@@ -57,28 +138,25 @@ button#finishBtn:hover{background:#ff8787;}
   <div id="topbar">
     <h1><span id="status-dot"></span>Classroom Live Visualizer</h1>
     <div id="controls">
-      <div class="selgroup">Feed A (main)<select id="cameraSelectA"></select></div>
-      <div class="selgroup">Feed B (overhead, optional)<select id="cameraSelectB"><option value="">None</option></select></div>
-      <button id="mirrorBtn" title="Mirror focused feed horizontally (M)">Mirror ⇋</button>
-      <button id="flipBtn" title="Flip focused feed 180° (F)">Flip 180° ↕</button>
-      <button id="freezeBtn" title="Freeze focused feed (Space)">Freeze ❄</button>
-      <button id="resetZoomBtn" title="Reset zoom on focused feed">Reset Zoom</button>
+      <select id="cameraSelect" title="Switch main camera"></select>
+      <button id="overheadBtn" title="Add/remove overhead camera as picture-in-picture">Add Overhead Feed</button>
+      <select id="overheadSelect" title="Choose overhead camera"></select>
+      <button id="mirrorBtn" title="Mirror horizontally (M)">Mirror ⇋</button>
+      <button id="flipBtn" title="Flip upside down (F)">Flip 180° ↕</button>
+      <button id="freezeBtn" title="Freeze (Space)">Freeze ❄</button>
+      <button id="resetZoomBtn" title="Reset zoom">Reset Zoom</button>
       <button id="finishBtn">Finish &amp; Save Demo</button>
     </div>
   </div>
 
   <div id="stage">
-    <div class="feed-wrap focused" id="wrapA" data-feed="A" style="flex-basis:100%;">
-      <video id="videoA" autoplay playsinline muted></video>
-      <div class="feed-label">Feed A</div>
-    </div>
-    <div class="feed-wrap hidden" id="wrapB" data-feed="B" style="flex-basis:0%;">
-      <video id="videoB" autoplay playsinline muted></video>
-      <div class="feed-label">Feed B — Overhead</div>
-    </div>
+    <video id="video" autoplay playsinline muted></video>
+    <video id="overheadVideo" autoplay playsinline muted></video>
+    <canvas id="stageCanvas"></canvas>
     <div id="freeze-overlay">FROZEN — press Space to resume</div>
     <div id="zoom-indicator">Zoomed 2.5x</div>
     <div id="flip-indicator">Flipped 180°</div>
+    <div id="overhead-indicator">Overhead PiP active</div>
     <div id="listening-indicator"><span class="dot"></span>Listening (transcript hidden)</div>
     <div id="caption-zone">
       <div id="badge-row"></div>
@@ -87,8 +165,6 @@ button#finishBtn:hover{background:#ff8787;}
     </div>
   </div>
 </div>
-
-<canvas id="captureCanvas" width="1920" height="1080" style="display:none;"></canvas>
 
 <div id="export-overlay">
   <div id="export-box">
@@ -101,367 +177,435 @@ button#finishBtn:hover{background:#ff8787;}
 </div>
 
 <script>
-(function(){
-// ============================ CONFIG ============================
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby3I9pKeay4IhwDkRSvrBvdpZYUyk5ZRRw-zlOhggYT8fAvcrVE_dfFvVnVJYnvSdrAcw/exec";
-const SHOW_LIVE_CAPTIONS = false; // transcription always runs & logs; display suppressed
-const FOCUS_MAJOR = 60; // % width of the focused/enhanced feed
-const FOCUS_MINOR = 40; // % width of the other feed
+(function() {
+  // =====================================================================
+  // CONFIG
+  // =====================================================================
+  const APPS_SCRIPT_URL = "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE";
+  const SHOW_LIVE_CAPTIONS = false; // transcription/logging always runs regardless
 
-if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("PASTE_YOUR") !== -1) {
-  document.getElementById('config-banner').style.display = 'block';
-}
-
-let streamA = null, streamB = null;
-let mediaRecorder = null, recordedChunks = [];
-let currentZoom = { A: 1, B: 1 };
-let mirrored = { A: false, B: false };
-let flipped = { A: false, B: false };
-let frozen = { A: false, B: false };
-let frozenCanvas = { A: document.createElement('canvas'), B: document.createElement('canvas') };
-let focused = 'A'; // which feed is currently enhanced (60%)
-let dualActive = false; // true once Feed B has a device selected
-let recognizer = null;
-let sessionStartTime = null;
-let transcriptLog = [];
-let captureRAF = null;
-
-const videoA = document.getElementById('videoA');
-const videoB = document.getElementById('videoB');
-const wrapA = document.getElementById('wrapA');
-const wrapB = document.getElementById('wrapB');
-const statusDot = document.getElementById('status-dot');
-const cameraSelectA = document.getElementById('cameraSelectA');
-const cameraSelectB = document.getElementById('cameraSelectB');
-const mirrorBtn = document.getElementById('mirrorBtn');
-const flipBtn = document.getElementById('flipBtn');
-const freezeBtn = document.getElementById('freezeBtn');
-const resetZoomBtn = document.getElementById('resetZoomBtn');
-const finishBtn = document.getElementById('finishBtn');
-const freezeOverlay = document.getElementById('freeze-overlay');
-const zoomIndicator = document.getElementById('zoom-indicator');
-const flipIndicator = document.getElementById('flip-indicator');
-const currentCaption = document.getElementById('current-caption');
-const badgeRow = document.getElementById('badge-row');
-const historyStrip = document.getElementById('history-strip');
-const captionZone = document.getElementById('caption-zone');
-const listeningIndicator = document.getElementById('listening-indicator');
-const captureCanvas = document.getElementById('captureCanvas');
-const captureCtx = captureCanvas.getContext('2d');
-
-const exportOverlay = document.getElementById('export-overlay');
-const exportStatus = document.getElementById('export-status');
-const exportLinks = document.getElementById('export-links');
-const spinner = document.getElementById('spinner');
-const closeExportBtn = document.getElementById('closeExport');
-
-if (SHOW_LIVE_CAPTIONS) { captionZone.style.display = 'flex'; listeningIndicator.style.display = 'none'; }
-else { captionZone.style.display = 'none'; listeningIndicator.style.display = 'flex'; }
-
-// ============================ Classification ============================
-const STEP_PATTERNS = [/^\s*first\b/i,/^\s*next\b/i,/^\s*then\b/i,/^\s*after that\b/i,/^\s*now we\b/i,/^\s*step\s*\d+/i,/^\s*finally\b/i,/^\s*once .*then\b/i,/^\s*let'?s (start|begin|move on)/i];
-const TECHNIQUE_PATTERNS = [/technique\s*:/i,/make sure to/i,/notice how/i,/hold the blade/i,/ensure the temperature/i,/be careful/i,/safety (tip|first)/i,/the key (is|here)/i,/important to/i,/watch (out|your)/i,/never/i,/always/i];
-function classify(text){for(const p of STEP_PATTERNS)if(p.test(text))return"STEP";for(const p of TECHNIQUE_PATTERNS)if(p.test(text))return"TECHNIQUE";return"SPEECH";}
-function elapsedTimeStr(){if(!sessionStartTime)return"00:00:00";const s=Math.floor((Date.now()-sessionStartTime)/1000);const hh=String(Math.floor(s/3600)).padStart(2,'0');const mm=String(Math.floor((s%3600)/60)).padStart(2,'0');const ss=String(s%60).padStart(2,'0');return`${hh}:${mm}:${ss}`;}
-
-// ============================ Camera enumeration ============================
-async function enumerateCameras(){
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const cams = devices.filter(d=>d.kind==='videoinput');
-  [cameraSelectA, cameraSelectB].forEach((sel, idx)=>{
-    const keepFirst = idx===1; // Feed B keeps the "None" option
-    sel.innerHTML = keepFirst ? '<option value="">None</option>' : '';
-    cams.forEach((d,i)=>{
-      const opt=document.createElement('option');
-      opt.value=d.deviceId; opt.textContent=d.label||`Camera ${i+1}`;
-      sel.appendChild(opt);
-    });
-  });
-}
-
-async function initFeedA(deviceId){
-  if(streamA) streamA.getTracks().forEach(t=>t.stop());
-  streamA = await navigator.mediaDevices.getUserMedia({
-    video:{deviceId:deviceId?{exact:deviceId}:undefined,width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},
-    audio:true
-  });
-  videoA.srcObject = streamA;
-  statusDot.classList.add('live');
-}
-
-async function initFeedB(deviceId){
-  if(streamB){ streamB.getTracks().forEach(t=>t.stop()); streamB=null; }
-  if(!deviceId){ dualActive=false; applyLayout(); return; }
-  streamB = await navigator.mediaDevices.getUserMedia({
-    video:{deviceId:{exact:deviceId},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},
-    audio:false
-  });
-  videoB.srcObject = streamB;
-  dualActive = true;
-  applyLayout();
-}
-
-cameraSelectA.addEventListener('change', async (e)=>{
-  try{ await initFeedA(e.target.value); } catch(err){ currentCaption.textContent='Feed A error: '+err.message; }
-});
-cameraSelectB.addEventListener('change', async (e)=>{
-  try{ await initFeedB(e.target.value); } catch(err){ currentCaption.textContent='Feed B error: '+err.message; }
-});
-
-// ============================ Layout / focus ============================
-function applyLayout(){
-  if(!dualActive){
-    wrapA.classList.remove('hidden'); wrapB.classList.add('hidden');
-    wrapA.style.flexBasis='100%'; wrapB.style.flexBasis='0%';
-    wrapA.classList.add('focused'); wrapB.classList.remove('focused');
-    return;
+  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("PASTE_YOUR") !== -1) {
+    document.getElementById('config-banner').style.display = 'block';
   }
-  wrapA.classList.remove('hidden'); wrapB.classList.remove('hidden');
-  const aMajor = focused==='A';
-  wrapA.style.flexBasis = (aMajor?FOCUS_MAJOR:FOCUS_MINOR)+'%';
-  wrapB.style.flexBasis = (aMajor?FOCUS_MINOR:FOCUS_MAJOR)+'%';
-  wrapA.classList.toggle('focused', aMajor);
-  wrapB.classList.toggle('focused', !aMajor);
-}
 
-function setFocus(feed){
-  if(!dualActive) return;
-  focused = feed;
-  applyLayout();
-}
+  let mainStream = null;
+  let overheadStream = null;
+  let overheadActive = false;
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let currentZoom = 1;
+  let zoomOriginX = 0.5, zoomOriginY = 0.5;
+  let mirrored = false;
+  let flipped = false;
+  let frozen = false;
+  let recognizer = null;
+  let sessionStartTime = null;
+  let transcriptLog = [];
+  let currentDevices = [];
+  let rafId = null;
 
-wrapA.addEventListener('click', ()=> setFocus('A'));
-wrapB.addEventListener('click', ()=> setFocus('B'));
+  const mainVideo = document.getElementById('video');
+  const overheadVideo = document.getElementById('overheadVideo');
+  const canvas = document.getElementById('stageCanvas');
+  const ctx = canvas.getContext('2d');
+  const stage = document.getElementById('stage');
 
-// ============================ Per-feed transform (zoom/mirror/flip) ============================
-videoA.addEventListener('dblclick', (e)=> handleDblClick('A', e));
-videoB.addEventListener('dblclick', (e)=> handleDblClick('B', e));
+  const statusDot = document.getElementById('status-dot');
+  const cameraSelect = document.getElementById('cameraSelect');
+  const overheadBtn = document.getElementById('overheadBtn');
+  const overheadSelect = document.getElementById('overheadSelect');
+  const mirrorBtn = document.getElementById('mirrorBtn');
+  const flipBtn = document.getElementById('flipBtn');
+  const freezeBtn = document.getElementById('freezeBtn');
+  const resetZoomBtn = document.getElementById('resetZoomBtn');
+  const finishBtn = document.getElementById('finishBtn');
+  const freezeOverlay = document.getElementById('freeze-overlay');
+  const zoomIndicator = document.getElementById('zoom-indicator');
+  const flipIndicator = document.getElementById('flip-indicator');
+  const overheadIndicator = document.getElementById('overhead-indicator');
+  const currentCaption = document.getElementById('current-caption');
+  const badgeRow = document.getElementById('badge-row');
+  const historyStrip = document.getElementById('history-strip');
+  const captionZone = document.getElementById('caption-zone');
+  const listeningIndicator = document.getElementById('listening-indicator');
 
-function handleDblClick(feed, e){
-  e.stopPropagation();
-  const video = feed==='A'?videoA:videoB;
-  const rect = video.getBoundingClientRect();
-  const x = ((e.clientX-rect.left)/rect.width)*100;
-  const y = ((e.clientY-rect.top)/rect.height)*100;
-  if(currentZoom[feed]===1){
-    video.style.transformOrigin = `${x}% ${y}%`;
-    setZoom(feed, 2.5);
+  const exportOverlay = document.getElementById('export-overlay');
+  const exportStatus = document.getElementById('export-status');
+  const exportLinks = document.getElementById('export-links');
+  const spinner = document.getElementById('spinner');
+  const closeExportBtn = document.getElementById('closeExport');
+
+  if (SHOW_LIVE_CAPTIONS) {
+    captionZone.style.display = 'flex';
+    listeningIndicator.style.display = 'none';
   } else {
-    setZoom(feed, 1);
+    captionZone.style.display = 'none';
+    listeningIndicator.style.display = 'flex';
   }
-}
 
-function setZoom(feed, scale){
-  currentZoom[feed]=scale;
-  if(feed===focused) zoomIndicator.style.display = scale!==1 ? 'block':'none';
-  applyTransform(feed);
-}
+  const STEP_PATTERNS = [
+    /^\s*first\b/i, /^\s*next\b/i, /^\s*then\b/i, /^\s*after that\b/i,
+    /^\s*now we\b/i, /^\s*step\s*\d+/i, /^\s*finally\b/i, /^\s*once .*then\b/i,
+    /^\s*let'?s (start|begin|move on)/i
+  ];
+  const TECHNIQUE_PATTERNS = [
+    /technique\s*:/i, /make sure to/i, /notice how/i, /hold the blade/i,
+    /ensure the temperature/i, /be careful/i, /safety (tip|first)/i,
+    /the key (is|here)/i, /important to/i, /watch (out|your)/i, /never/i, /always/i
+  ];
 
-function applyTransform(feed){
-  const video = feed==='A'?videoA:videoB;
-  const parts=[];
-  if(flipped[feed]) parts.push('rotate(180deg)');
-  if(mirrored[feed]) parts.push('scaleX(-1)');
-  parts.push(`scale(${currentZoom[feed]})`);
-  video.style.transform = parts.join(' ');
-}
-
-resetZoomBtn.addEventListener('click', ()=>{
-  const v = focused==='A'?videoA:videoB;
-  v.style.transformOrigin='50% 50%';
-  setZoom(focused, 1);
-});
-
-function toggleMirror(){
-  mirrored[focused] = !mirrored[focused];
-  mirrorBtn.classList.toggle('active', mirrored[focused]);
-  applyTransform(focused);
-}
-mirrorBtn.addEventListener('click', toggleMirror);
-
-function toggleFlip(){
-  flipped[focused] = !flipped[focused];
-  flipBtn.classList.toggle('active', flipped[focused]);
-  flipIndicator.style.display = flipped[focused] ? 'block':'none';
-  applyTransform(focused);
-}
-flipBtn.addEventListener('click', toggleFlip);
-
-function toggleFreeze(){
-  const feed = focused;
-  const video = feed==='A'?videoA:videoB;
-  frozen[feed] = !frozen[feed];
-  freezeBtn.classList.toggle('active', frozen[feed]);
-  freezeOverlay.style.display = frozen[feed] ? 'block':'none';
-  if(frozen[feed]){
-    const canvas = frozenCanvas[feed];
-    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video,0,0,canvas.width,canvas.height);
-    const dataUrl = canvas.toDataURL('image/png');
-    video.style.backgroundImage = `url(${dataUrl})`;
-    video.style.backgroundSize='contain'; video.style.backgroundPosition='center'; video.style.backgroundRepeat='no-repeat';
-    video.pause();
-  } else {
-    video.style.backgroundImage='none';
-    video.play();
+  function classify(text) {
+    for (const p of STEP_PATTERNS) if (p.test(text)) return "STEP";
+    for (const p of TECHNIQUE_PATTERNS) if (p.test(text)) return "TECHNIQUE";
+    return "SPEECH";
   }
-}
-freezeBtn.addEventListener('click', toggleFreeze);
 
-document.addEventListener('keydown', (e)=>{
-  if(e.target.tagName==='SELECT'||e.target.tagName==='INPUT') return;
-  if(e.code==='Space'){ e.preventDefault(); toggleFreeze(); }
-  if(e.key.toLowerCase()==='m'){ toggleMirror(); }
-  if(e.key.toLowerCase()==='f'){ toggleFlip(); }
-});
-
-// ============================ Canvas compositing for recording ============================
-function drawFeedInto(ctx, video, dx, dy, dw, dh){
-  if(!video.videoWidth) return;
-  const vw=video.videoWidth, vh=video.videoHeight;
-  const scale = Math.min(dw/vw, dh/vh);
-  const rw=vw*scale, rh=vh*scale;
-  const rx=dx+(dw-rw)/2, ry=dy+(dh-rh)/2;
-  ctx.save();
-  ctx.beginPath(); ctx.rect(dx,dy,dw,dh); ctx.clip();
-  ctx.drawImage(video, rx, ry, rw, rh);
-  ctx.restore();
-}
-
-function compositeLoop(){
-  const W = captureCanvas.width, H = captureCanvas.height;
-  captureCtx.fillStyle='#000'; captureCtx.fillRect(0,0,W,H);
-  if(!dualActive){
-    drawFeedInto(captureCtx, videoA, 0, 0, W, H);
-  } else {
-    const aMajor = focused==='A';
-    const wA = W * (aMajor?FOCUS_MAJOR:FOCUS_MINOR)/100;
-    const wB = W - wA;
-    drawFeedInto(captureCtx, videoA, 0, 0, wA, H);
-    drawFeedInto(captureCtx, videoB, wA, 0, wB, H);
+  function elapsedTimeStr() {
+    if (!sessionStartTime) return "00:00:00";
+    const s = Math.floor((Date.now() - sessionStartTime) / 1000);
+    const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
   }
-  captureRAF = requestAnimationFrame(compositeLoop);
-}
 
-function startRecording(){
-  recordedChunks = [];
-  const canvasStream = captureCanvas.captureStream(30);
-  const audioTrack = streamA.getAudioTracks()[0];
-  const combined = new MediaStream([...canvasStream.getVideoTracks(), ...(audioTrack?[audioTrack]:[])]);
+  // ---------- Canvas sizing ----------
+  function resizeCanvas() {
+    const rect = stage.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+  }
+  window.addEventListener('resize', resizeCanvas);
 
-  let mimeType = 'video/webm;codecs=vp9,opus';
-  if(!MediaRecorder.isTypeSupported(mimeType)) mimeType='video/webm';
-  try{ mediaRecorder = new MediaRecorder(combined, {mimeType}); }
-  catch(e){ mediaRecorder = new MediaRecorder(combined); }
-  mediaRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size>0) recordedChunks.push(e.data); };
-  mediaRecorder.start(1000);
-  sessionStartTime = Date.now();
-  compositeLoop();
-}
+  // Draws a video element into the canvas region, preserving aspect ratio
+  // ("contain" behavior), centered within the given target box.
+  function drawContain(videoEl, tx, ty, tw, th) {
+    const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+    if (!vw || !vh) return;
+    const scale = Math.min(tw / vw, th / vh);
+    const dw = vw * scale, dh = vh * scale;
+    const dx = tx + (tw - dw) / 2, dy = ty + (th - dh) / 2;
+    ctx.drawImage(videoEl, dx, dy, dw, dh);
+  }
 
-// ============================ Speech recognition ============================
-function initSpeech(){
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SpeechRecognition){ if(SHOW_LIVE_CAPTIONS) currentCaption.textContent='Speech recognition not supported in this browser.'; return; }
-  recognizer = new SpeechRecognition();
-  recognizer.continuous=true; recognizer.interimResults=true; recognizer.lang='en-AU';
-  recognizer.onresult = (event)=>{
-    let interim='';
-    for(let i=event.resultIndex;i<event.results.length;i++){
-      const result=event.results[i]; const text=result[0].transcript.trim();
-      if(result.isFinal){
-        if(text.length>0){
-          const type=classify(text); const time=elapsedTimeStr();
-          transcriptLog.push({time,type,text});
-          renderCaption(text,type);
-        }
-      } else { interim=text; }
+  // ---------- Main render loop ----------
+  function renderFrame() {
+    if (!frozen) {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      const originXpx = zoomOriginX * canvas.width;
+      const originYpx = zoomOriginY * canvas.height;
+      ctx.translate(originXpx, originYpx);
+      if (flipped) ctx.rotate(Math.PI);
+      if (mirrored) ctx.scale(-1, 1);
+      ctx.scale(currentZoom, currentZoom);
+      ctx.translate(-originXpx, -originYpx);
+      drawContain(mainVideo, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      if (overheadActive && overheadVideo.videoWidth) {
+        const pipW = canvas.width * 0.28;
+        const pipH = pipW * (overheadVideo.videoHeight / overheadVideo.videoWidth || 0.75);
+        const margin = 16;
+        const px = canvas.width - pipW - margin;
+        const py = canvas.height - pipH - margin;
+        ctx.save();
+        ctx.fillStyle = '#000';
+        ctx.fillRect(px - 3, py - 3, pipW + 6, pipH + 6);
+        drawContain(overheadVideo, px, py, pipW, pipH);
+        ctx.strokeStyle = '#ffb84d';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(px - 3, py - 3, pipW + 6, pipH + 6);
+        ctx.restore();
+      }
     }
-    if(interim) renderCaption(interim,"SPEECH",true);
-  };
-  recognizer.onerror = (e)=>console.log('Speech recognition error', e.error);
-  recognizer.onend = ()=>{ if(streamA){ setTimeout(()=>{try{recognizer.start();}catch(err){}}, 400); } };
-  try{ recognizer.start(); } catch(e){ console.log('Could not start recognition', e); }
-}
-
-function renderCaption(text,type,isInterim){
-  currentCaption.textContent=text;
-  badgeRow.innerHTML='';
-  if(type==='STEP'){ const b=document.createElement('span'); b.className='badge step'; b.textContent='Step'; badgeRow.appendChild(b); }
-  else if(type==='TECHNIQUE'){ const b=document.createElement('span'); b.className='badge technique'; b.textContent='Technique / Safety'; badgeRow.appendChild(b); }
-  if(!isInterim){
-    const line=document.createElement('div');
-    line.textContent=`[${elapsedTimeStr()}] ${text}`;
-    historyStrip.prepend(line);
-    while(historyStrip.childNodes.length>2) historyStrip.removeChild(historyStrip.lastChild);
+    rafId = requestAnimationFrame(renderFrame);
   }
-}
 
-// ============================ Finish & Save ============================
-finishBtn.addEventListener('click', async ()=>{
-  exportOverlay.style.display='flex';
-  exportStatus.textContent='Stopping recording…';
-  spinner.style.display='block'; closeExportBtn.style.display='none'; exportLinks.innerHTML='';
+  // ---------- Recorder (records the composited canvas, persists across
+  // camera switches and PiP toggles so the file stays one continuous clip) ----------
+  function startRecorder() {
+    resizeCanvas();
+    const canvasStream = canvas.captureStream(30);
+    const audioTrack = mainStream.getAudioTracks()[0];
+    if (audioTrack) canvasStream.addTrack(audioTrack);
 
-  if(recognizer){ try{recognizer.stop();}catch(e){} }
-  if(captureRAF) cancelAnimationFrame(captureRAF);
+    let mimeType = 'video/webm;codecs=vp9,opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+    try { mediaRecorder = new MediaRecorder(canvasStream, { mimeType }); }
+    catch (e) { mediaRecorder = new MediaRecorder(canvasStream); }
 
-  const durationSeconds = sessionStartTime ? (Date.now()-sessionStartTime)/1000 : 0;
-
-  mediaRecorder.onstop = async ()=>{
-    exportStatus.textContent='Encoding video…';
-    const blob = new Blob(recordedChunks, {type: mediaRecorder.mimeType||'video/webm'});
-    const reader = new FileReader();
-    reader.onload = async function(){
-      const base64data = reader.result;
-      exportStatus.textContent='Uploading to Google Drive…';
-      try{
-        const resp = await fetch(APPS_SCRIPT_URL, {
-          method:'POST',
-          body: JSON.stringify({
-            action:'saveDemonstrationPackage',
-            base64Video: base64data,
-            transcriptLog: transcriptLog,
-            meta:{ durationSeconds: durationSeconds, mimeType: mediaRecorder.mimeType||'video/webm' }
-          })
-        });
-        const result = await resp.json();
-        onSaveSuccess(result);
-      } catch(err){ onSaveFailure(err); }
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) recordedChunks.push(e.data);
     };
-    reader.readAsDataURL(blob);
-  };
-  mediaRecorder.stop();
-});
-
-function onSaveSuccess(result){
-  spinner.style.display='none';
-  if(result.success){
-    exportStatus.textContent='Saved successfully!';
-    exportLinks.innerHTML = `<a href="${result.videoUrl}" target="_blank">Open Video File</a><a href="${result.docUrl}" target="_blank">Open Demonstration Doc</a>`;
-  } else { exportStatus.textContent='Error: '+result.message; }
-  closeExportBtn.style.display='inline-block';
-}
-function onSaveFailure(err){
-  spinner.style.display='none';
-  exportStatus.textContent='Upload failed: '+(err.message||err);
-  closeExportBtn.style.display='inline-block';
-}
-closeExportBtn.addEventListener('click', ()=>{ exportOverlay.style.display='none'; });
-
-// ============================ Boot ============================
-async function boot(){
-  try{
-    await initFeedA(null);
-    await enumerateCameras();
-    startRecording();
-    initSpeech();
-  } catch(err){
-    currentCaption.textContent = 'Camera/mic access error: '+err.message;
+    mediaRecorder.start(1000);
+    sessionStartTime = Date.now();
   }
-}
-boot();
+
+  // ---------- Main camera ----------
+  async function initMainMedia(deviceId) {
+    if (mainStream) mainStream.getTracks().forEach(t => t.stop());
+    const constraints = {
+      video: {
+        deviceId: deviceId ? { exact: deviceId } : undefined,
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30 }
+      },
+      audio: true
+    };
+    mainStream = await navigator.mediaDevices.getUserMedia(constraints);
+    mainVideo.srcObject = mainStream;
+    statusDot.classList.add('live');
+
+    if (!mediaRecorder) {
+      resizeCanvas();
+      renderFrame();
+      startRecorder();
+      initSpeech();
+    }
+  }
+
+  async function enumerateCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    currentDevices = devices.filter(d => d.kind === 'videoinput');
+    [cameraSelect, overheadSelect].forEach(sel => {
+      const keepFirst = sel.id === 'overheadSelect' ? '<option value="">Choose overhead camera…</option>' : '';
+      sel.innerHTML = keepFirst;
+      currentDevices.forEach((d, i) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || `Camera ${i + 1}`;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
+  cameraSelect.addEventListener('change', async (e) => {
+    try { await initMainMedia(e.target.value); }
+    catch (err) { console.log("Camera switch failed:", err.message); }
+  });
+
+  // ---------- Overhead (picture-in-picture) camera ----------
+  overheadBtn.addEventListener('click', () => {
+    if (!overheadActive) {
+      overheadSelect.style.display = 'inline-block';
+    } else {
+      stopOverhead();
+    }
+  });
+
+  overheadSelect.addEventListener('change', async (e) => {
+    const deviceId = e.target.value;
+    if (!deviceId) return;
+    try {
+      overheadStream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
+      });
+      overheadVideo.srcObject = overheadStream;
+      overheadActive = true;
+      overheadBtn.textContent = 'Remove Overhead Feed';
+      overheadBtn.classList.add('active');
+      overheadIndicator.style.display = 'block';
+      overheadSelect.style.display = 'none';
+    } catch (err) {
+      console.log('Overhead camera failed to start:', err.message);
+    }
+  });
+
+  function stopOverhead() {
+    if (overheadStream) overheadStream.getTracks().forEach(t => t.stop());
+    overheadStream = null;
+    overheadActive = false;
+    overheadBtn.textContent = 'Add Overhead Feed';
+    overheadBtn.classList.remove('active');
+    overheadIndicator.style.display = 'none';
+    overheadSelect.style.display = 'none';
+    overheadSelect.value = '';
+  }
+
+  // ---------- Zoom (double-click on canvas) ----------
+  canvas.addEventListener('dblclick', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    if (currentZoom === 1) {
+      zoomOriginX = x; zoomOriginY = y;
+      currentZoom = 2.5;
+      zoomIndicator.style.display = 'block';
+    } else {
+      currentZoom = 1;
+      zoomOriginX = 0.5; zoomOriginY = 0.5;
+      zoomIndicator.style.display = 'none';
+    }
+  });
+
+  resetZoomBtn.addEventListener('click', () => {
+    currentZoom = 1;
+    zoomOriginX = 0.5; zoomOriginY = 0.5;
+    zoomIndicator.style.display = 'none';
+  });
+
+  function toggleMirror() {
+    mirrored = !mirrored;
+    mirrorBtn.classList.toggle('active', mirrored);
+  }
+  mirrorBtn.addEventListener('click', toggleMirror);
+
+  function toggleFlip() {
+    flipped = !flipped;
+    flipBtn.classList.toggle('active', flipped);
+    flipIndicator.style.display = flipped ? 'block' : 'none';
+  }
+  flipBtn.addEventListener('click', toggleFlip);
+
+  function toggleFreeze() {
+    frozen = !frozen;
+    freezeBtn.classList.toggle('active', frozen);
+    freezeOverlay.style.display = frozen ? 'block' : 'none';
+  }
+  freezeBtn.addEventListener('click', toggleFreeze);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); toggleFreeze(); }
+    if (e.key.toLowerCase() === 'm') { toggleMirror(); }
+    if (e.key.toLowerCase() === 'f') { toggleFlip(); }
+  });
+
+  // ---------- Speech recognition (always logs transcript; display optional) ----------
+  function initSpeech() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    recognizer = new SpeechRecognition();
+    recognizer.continuous = true;
+    recognizer.interimResults = true;
+    recognizer.lang = 'en-AU';
+
+    recognizer.onresult = (event) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const text = result[0].transcript.trim();
+        if (result.isFinal) {
+          if (text.length > 0) {
+            const type = classify(text);
+            const time = elapsedTimeStr();
+            transcriptLog.push({ time, type, text });
+            renderCaption(text, type);
+          }
+        } else {
+          interim = text;
+        }
+      }
+      if (interim) renderCaption(interim, "SPEECH", true);
+    };
+    recognizer.onerror = (e) => console.log('Speech recognition error', e.error);
+    recognizer.onend = () => {
+      if (mainStream) setTimeout(() => { try { recognizer.start(); } catch (err) {} }, 400);
+    };
+    try { recognizer.start(); } catch (e) { console.log('Could not start recognition', e); }
+  }
+
+  function renderCaption(text, type, isInterim) {
+    currentCaption.textContent = text;
+    badgeRow.innerHTML = '';
+    if (type === 'STEP') {
+      const b = document.createElement('span');
+      b.className = 'badge step'; b.textContent = 'Step';
+      badgeRow.appendChild(b);
+    } else if (type === 'TECHNIQUE') {
+      const b = document.createElement('span');
+      b.className = 'badge technique'; b.textContent = 'Technique / Safety';
+      badgeRow.appendChild(b);
+    }
+    if (!isInterim) {
+      const line = document.createElement('div');
+      line.textContent = `[${elapsedTimeStr()}] ${text}`;
+      historyStrip.prepend(line);
+      while (historyStrip.childNodes.length > 2) historyStrip.removeChild(historyStrip.lastChild);
+    }
+  }
+
+  // ---------- Finish & Save ----------
+  finishBtn.addEventListener('click', async () => {
+    exportOverlay.style.display = 'flex';
+    exportStatus.textContent = 'Stopping recording…';
+    spinner.style.display = 'block';
+    closeExportBtn.style.display = 'none';
+    exportLinks.innerHTML = '';
+
+    if (recognizer) { try { recognizer.stop(); } catch (e) {} }
+    if (rafId) cancelAnimationFrame(rafId);
+
+    const durationSeconds = sessionStartTime ? (Date.now() - sessionStartTime) / 1000 : 0;
+
+    mediaRecorder.onstop = async () => {
+      exportStatus.textContent = 'Encoding video…';
+      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+      const reader = new FileReader();
+      reader.onload = async function() {
+        const base64data = reader.result;
+        exportStatus.textContent = 'Uploading to Google Drive…';
+        try {
+          const resp = await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'saveDemonstrationPackage',
+              base64Video: base64data,
+              transcriptLog: transcriptLog,
+              meta: {
+                durationSeconds: durationSeconds,
+                mimeType: mediaRecorder.mimeType || 'video/webm'
+              }
+            })
+          });
+          const result = await resp.json();
+          onSaveSuccess(result);
+        } catch (err) {
+          onSaveFailure(err);
+        }
+      };
+      reader.readAsDataURL(blob);
+    };
+    mediaRecorder.stop();
+  });
+
+  function onSaveSuccess(result) {
+    spinner.style.display = 'none';
+    if (result.success) {
+      exportStatus.textContent = 'Saved successfully!';
+      exportLinks.innerHTML = `
+        <a href="${result.videoUrl}" target="_blank">Open Video File</a>
+        <a href="${result.docUrl}" target="_blank">Open Demonstration Doc</a>`;
+    } else {
+      exportStatus.textContent = 'Error: ' + result.message;
+    }
+    closeExportBtn.style.display = 'inline-block';
+  }
+
+  function onSaveFailure(err) {
+    spinner.style.display = 'none';
+    exportStatus.textContent = 'Upload failed: ' + (err.message || err);
+    closeExportBtn.style.display = 'inline-block';
+  }
+
+  closeExportBtn.addEventListener('click', () => { exportOverlay.style.display = 'none'; });
+
+  async function boot() {
+    try {
+      resizeCanvas();
+      await initMainMedia(null);
+      await enumerateCameras();
+    } catch (err) {
+      console.log('Camera/mic access error:', err.message);
+    }
+  }
+
+  boot();
 })();
 </script>
 </body>
