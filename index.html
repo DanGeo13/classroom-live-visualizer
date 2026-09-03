@@ -49,14 +49,8 @@
       position: relative; flex: 1; overflow: hidden; background: #000;
       display: flex; align-items: center; justify-content: center;
     }
-    #stageCanvas {
-      width: 100%; height: 100%; background: #000;
-      transition: transform 0.35s ease;
-      will-change: transform;
-    }
+    #stageCanvas { width: 100%; height: 100%; background: #000; cursor: pointer; }
 
-    /* Hidden source video elements — never shown directly, only drawn
-       into the canvas frame by frame. */
     #video, #overheadVideo { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
     #freeze-overlay {
@@ -64,20 +58,19 @@
       color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
       display: none; z-index: 15;
     }
-    #zoom-indicator {
-      position: absolute; top: 14px; right: 14px; background: rgba(0,0,0,0.55);
-      color: var(--accent); padding: 6px 12px; border-radius: 20px; font-size: 12px;
-      display: none; z-index: 15;
+    #hint-banner {
+      position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.55); color: var(--muted); padding: 6px 14px; border-radius: 20px;
+      font-size: 12px; z-index: 15; display: none; white-space: nowrap;
     }
-    #flip-indicator {
-      position: absolute; top: 50px; right: 14px; background: rgba(0,0,0,0.55);
-      color: var(--tech-color); padding: 6px 12px; border-radius: 20px; font-size: 12px;
-      display: none; z-index: 15;
+    #listening-indicator {
+      position: absolute; bottom: 14px; left: 14px; display: flex; align-items: center;
+      gap: 6px; background: rgba(0,0,0,0.55); padding: 6px 12px; border-radius: 20px;
+      font-size: 12px; color: var(--muted); z-index: 15;
     }
-    #overhead-indicator {
-      position: absolute; top: 86px; right: 14px; background: rgba(0,0,0,0.55);
-      color: #ffb84d; padding: 6px 12px; border-radius: 20px; font-size: 12px;
-      display: none; z-index: 15;
+    #listening-indicator .dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+      animation: pulse 1.5s infinite;
     }
 
     #caption-zone {
@@ -97,16 +90,6 @@
       text-shadow: 0 2px 6px rgba(0,0,0,0.8);
     }
     #history-strip { font-size: 13px; color: var(--muted); margin-top: 6px; max-height: 40px; overflow: hidden; }
-
-    #listening-indicator {
-      position: absolute; bottom: 14px; left: 14px; display: flex; align-items: center;
-      gap: 6px; background: rgba(0,0,0,0.55); padding: 6px 12px; border-radius: 20px;
-      font-size: 12px; color: var(--muted); z-index: 15;
-    }
-    #listening-indicator .dot {
-      width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
-      animation: pulse 1.5s infinite;
-    }
 
     #export-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none;
@@ -144,7 +127,7 @@
       <button id="mirrorBtn" title="Mirror horizontally (M)">Mirror ⇋</button>
       <button id="flipBtn" title="Flip upside down (F)">Flip 180° ↕</button>
       <button id="freezeBtn" title="Freeze (Space)">Freeze ❄</button>
-      <button id="resetZoomBtn" title="Reset zoom">Reset Zoom</button>
+      <button id="resetZoomBtn" title="Reset zoom on both feeds">Reset Zoom</button>
       <button id="finishBtn">Finish &amp; Save Demo</button>
     </div>
   </div>
@@ -154,9 +137,7 @@
     <video id="overheadVideo" autoplay playsinline muted></video>
     <canvas id="stageCanvas"></canvas>
     <div id="freeze-overlay">FROZEN — press Space to resume</div>
-    <div id="zoom-indicator">Zoomed 2.5x</div>
-    <div id="flip-indicator">Flipped 180°</div>
-    <div id="overhead-indicator">Overhead PiP active</div>
+    <div id="hint-banner">Click a feed to make it the large view · Double-click a feed to zoom into it</div>
     <div id="listening-indicator"><span class="dot"></span>Listening (transcript hidden)</div>
     <div id="caption-zone">
       <div id="badge-row"></div>
@@ -191,10 +172,9 @@
   let mainStream = null;
   let overheadStream = null;
   let overheadActive = false;
+  let primaryFeed = 'main'; // 'main' | 'overhead' — which feed is shown large
   let mediaRecorder = null;
   let recordedChunks = [];
-  let currentZoom = 1;
-  let zoomOriginX = 0.5, zoomOriginY = 0.5;
   let mirrored = false;
   let flipped = false;
   let frozen = false;
@@ -203,6 +183,13 @@
   let transcriptLog = [];
   let currentDevices = [];
   let rafId = null;
+  let clickTimer = null;
+
+  // Independent zoom state per feed: {scale, originX, originY} (origin as 0..1 fraction of that feed's box)
+  const zoomState = {
+    main: { scale: 1, originX: 0.5, originY: 0.5 },
+    overhead: { scale: 1, originX: 0.5, originY: 0.5 }
+  };
 
   const mainVideo = document.getElementById('video');
   const overheadVideo = document.getElementById('overheadVideo');
@@ -220,9 +207,7 @@
   const resetZoomBtn = document.getElementById('resetZoomBtn');
   const finishBtn = document.getElementById('finishBtn');
   const freezeOverlay = document.getElementById('freeze-overlay');
-  const zoomIndicator = document.getElementById('zoom-indicator');
-  const flipIndicator = document.getElementById('flip-indicator');
-  const overheadIndicator = document.getElementById('overhead-indicator');
+  const hintBanner = document.getElementById('hint-banner');
   const currentCaption = document.getElementById('current-caption');
   const badgeRow = document.getElementById('badge-row');
   const historyStrip = document.getElementById('history-strip');
@@ -269,7 +254,6 @@
     return `${hh}:${mm}:${ss}`;
   }
 
-  // ---------- Canvas sizing ----------
   function resizeCanvas() {
     const rect = stage.getBoundingClientRect();
     canvas.width = rect.width;
@@ -277,8 +261,23 @@
   }
   window.addEventListener('resize', resizeCanvas);
 
-  // Draws a video element into the canvas region, preserving aspect ratio
-  // ("contain" behavior), centered within the given target box.
+  // ---------- Box layout ----------
+  // Returns { primaryBox, insetBox } in canvas pixel coordinates.
+  // insetBox is null when the overhead feed isn't active.
+  function getBoxes() {
+    const primaryBox = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+    if (!overheadActive) return { primaryBox, insetBox: null };
+    const margin = 16;
+    const insetW = canvas.width * 0.28;
+    const insetH = insetW * 0.75;
+    const insetBox = {
+      x: canvas.width - insetW - margin,
+      y: canvas.height - insetH - margin,
+      w: insetW, h: insetH
+    };
+    return { primaryBox, insetBox };
+  }
+
   function drawContain(videoEl, tx, ty, tw, th) {
     const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
     if (!vw || !vh) return;
@@ -288,44 +287,127 @@
     ctx.drawImage(videoEl, dx, dy, dw, dh);
   }
 
-  // ---------- Main render loop ----------
+  // Draws a feed into a box, applying that feed's own zoom state (and,
+  // optionally, mirror/flip — only ever applied to whichever feed is
+  // currently the large "primary" view).
+  function drawFeedInBox(videoEl, box, zState, applyMirrorFlip) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(box.x, box.y, box.w, box.h);
+    ctx.clip();
+    const originXpx = box.x + zState.originX * box.w;
+    const originYpx = box.y + zState.originY * box.h;
+    ctx.translate(originXpx, originYpx);
+    if (applyMirrorFlip && flipped) ctx.rotate(Math.PI);
+    if (applyMirrorFlip && mirrored) ctx.scale(-1, 1);
+    ctx.scale(zState.scale, zState.scale);
+    ctx.translate(-originXpx, -originYpx);
+    drawContain(videoEl, box.x, box.y, box.w, box.h);
+    ctx.restore();
+  }
+
   function renderFrame() {
     if (!frozen) {
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      ctx.save();
-      const originXpx = zoomOriginX * canvas.width;
-      const originYpx = zoomOriginY * canvas.height;
-      ctx.translate(originXpx, originYpx);
-      if (flipped) ctx.rotate(Math.PI);
-      if (mirrored) ctx.scale(-1, 1);
-      ctx.scale(currentZoom, currentZoom);
-      ctx.translate(-originXpx, -originYpx);
-      drawContain(mainVideo, 0, 0, canvas.width, canvas.height);
-      ctx.restore();
+      const { primaryBox, insetBox } = getBoxes();
+      const primaryVideo = primaryFeed === 'main' ? mainVideo : overheadVideo;
+      const primaryZoom = primaryFeed === 'main' ? zoomState.main : zoomState.overhead;
+      drawFeedInBox(primaryVideo, primaryBox, primaryZoom, true);
 
-      if (overheadActive && overheadVideo.videoWidth) {
-        const pipW = canvas.width * 0.28;
-        const pipH = pipW * (overheadVideo.videoHeight / overheadVideo.videoWidth || 0.75);
-        const margin = 16;
-        const px = canvas.width - pipW - margin;
-        const py = canvas.height - pipH - margin;
+      if (insetBox) {
+        const insetVideoEl = primaryFeed === 'main' ? overheadVideo : mainVideo;
+        const insetZoom = primaryFeed === 'main' ? zoomState.overhead : zoomState.main;
         ctx.save();
         ctx.fillStyle = '#000';
-        ctx.fillRect(px - 3, py - 3, pipW + 6, pipH + 6);
-        drawContain(overheadVideo, px, py, pipW, pipH);
+        ctx.fillRect(insetBox.x - 3, insetBox.y - 3, insetBox.w + 6, insetBox.h + 6);
+        drawFeedInBox(insetVideoEl, insetBox, insetZoom, false);
         ctx.strokeStyle = '#ffb84d';
         ctx.lineWidth = 3;
-        ctx.strokeRect(px - 3, py - 3, pipW + 6, pipH + 6);
+        ctx.strokeRect(insetBox.x - 3, insetBox.y - 3, insetBox.w + 6, insetBox.h + 6);
         ctx.restore();
       }
     }
     rafId = requestAnimationFrame(renderFrame);
   }
 
+  // ---------- Click / double-click interaction ----------
+  function pointInBox(px, py, box) {
+    return px >= box.x && px <= box.x + box.w && py >= box.y && py <= box.y + box.h;
+  }
+
+  function getCanvasPoint(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height)
+    };
+  }
+
+  // Identifies which logical feed ('main' or 'overhead') and which box a
+  // click landed in, accounting for current primary/inset assignment.
+  function hitTest(px, py) {
+    const { primaryBox, insetBox } = getBoxes();
+    if (insetBox && pointInBox(px, py, insetBox)) {
+      const feed = primaryFeed === 'main' ? 'overhead' : 'main';
+      return { feed, box: insetBox, isInset: true };
+    }
+    if (pointInBox(px, py, primaryBox)) {
+      return { feed: primaryFeed, box: primaryBox, isInset: false };
+    }
+    return null;
+  }
+
+  canvas.addEventListener('click', (e) => {
+    if (clickTimer) return;
+    clickTimer = setTimeout(() => {
+      handleSingleClick(e);
+      clickTimer = null;
+    }, 230);
+  });
+
+  canvas.addEventListener('dblclick', (e) => {
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+    handleDoubleClick(e);
+  });
+
+  function handleSingleClick(e) {
+    if (!overheadActive) return;
+    const pt = getCanvasPoint(e);
+    const hit = hitTest(pt.x, pt.y);
+    if (hit && hit.isInset) {
+      // Clicking the small inset feed promotes it to the large view.
+      primaryFeed = hit.feed;
+    }
+  }
+
+  function handleDoubleClick(e) {
+    const pt = getCanvasPoint(e);
+    const hit = hitTest(pt.x, pt.y);
+    if (!hit) return;
+    const zState = zoomState[hit.feed];
+    if (zState.scale === 1) {
+      const localX = (pt.x - hit.box.x) / hit.box.w;
+      const localY = (pt.y - hit.box.y) / hit.box.h;
+      zState.originX = localX;
+      zState.originY = localY;
+      zState.scale = 2.5;
+    } else {
+      zState.scale = 1;
+      zState.originX = 0.5;
+      zState.originY = 0.5;
+    }
+  }
+
+  resetZoomBtn.addEventListener('click', () => {
+    zoomState.main.scale = 1; zoomState.main.originX = 0.5; zoomState.main.originY = 0.5;
+    zoomState.overhead.scale = 1; zoomState.overhead.originX = 0.5; zoomState.overhead.originY = 0.5;
+  });
+
   // ---------- Recorder (records the composited canvas, persists across
-  // camera switches and PiP toggles so the file stays one continuous clip) ----------
+  // camera switches, PiP toggles, and layout swaps so the file stays one
+  // continuous clip) ----------
   function startRecorder() {
     resizeCanvas();
     const canvasStream = canvas.captureStream(30);
@@ -344,7 +426,6 @@
     sessionStartTime = Date.now();
   }
 
-  // ---------- Main camera ----------
   async function initMainMedia(deviceId) {
     if (mainStream) mainStream.getTracks().forEach(t => t.stop());
     const constraints = {
@@ -388,7 +469,6 @@
     catch (err) { console.log("Camera switch failed:", err.message); }
   });
 
-  // ---------- Overhead (picture-in-picture) camera ----------
   overheadBtn.addEventListener('click', () => {
     if (!overheadActive) {
       overheadSelect.style.display = 'inline-block';
@@ -409,8 +489,9 @@
       overheadActive = true;
       overheadBtn.textContent = 'Remove Overhead Feed';
       overheadBtn.classList.add('active');
-      overheadIndicator.style.display = 'block';
       overheadSelect.style.display = 'none';
+      hintBanner.style.display = 'block';
+      setTimeout(() => { hintBanner.style.display = 'none'; }, 5000);
     } catch (err) {
       console.log('Overhead camera failed to start:', err.message);
     }
@@ -420,34 +501,14 @@
     if (overheadStream) overheadStream.getTracks().forEach(t => t.stop());
     overheadStream = null;
     overheadActive = false;
+    primaryFeed = 'main';
+    zoomState.overhead.scale = 1; zoomState.overhead.originX = 0.5; zoomState.overhead.originY = 0.5;
     overheadBtn.textContent = 'Add Overhead Feed';
     overheadBtn.classList.remove('active');
-    overheadIndicator.style.display = 'none';
     overheadSelect.style.display = 'none';
     overheadSelect.value = '';
+    hintBanner.style.display = 'none';
   }
-
-  // ---------- Zoom (double-click on canvas) ----------
-  canvas.addEventListener('dblclick', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    if (currentZoom === 1) {
-      zoomOriginX = x; zoomOriginY = y;
-      currentZoom = 2.5;
-      zoomIndicator.style.display = 'block';
-    } else {
-      currentZoom = 1;
-      zoomOriginX = 0.5; zoomOriginY = 0.5;
-      zoomIndicator.style.display = 'none';
-    }
-  });
-
-  resetZoomBtn.addEventListener('click', () => {
-    currentZoom = 1;
-    zoomOriginX = 0.5; zoomOriginY = 0.5;
-    zoomIndicator.style.display = 'none';
-  });
 
   function toggleMirror() {
     mirrored = !mirrored;
@@ -458,7 +519,6 @@
   function toggleFlip() {
     flipped = !flipped;
     flipBtn.classList.toggle('active', flipped);
-    flipIndicator.style.display = flipped ? 'block' : 'none';
   }
   flipBtn.addEventListener('click', toggleFlip);
 
@@ -476,7 +536,6 @@
     if (e.key.toLowerCase() === 'f') { toggleFlip(); }
   });
 
-  // ---------- Speech recognition (always logs transcript; display optional) ----------
   function initSpeech() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
@@ -530,7 +589,6 @@
     }
   }
 
-  // ---------- Finish & Save ----------
   finishBtn.addEventListener('click', async () => {
     exportOverlay.style.display = 'flex';
     exportStatus.textContent = 'Stopping recording…';
