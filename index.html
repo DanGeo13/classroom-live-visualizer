@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Classroom Live Visualizer</title>
+  <link rel="icon" href="data:,">
   <style>
     :root {
       --bg:#0a0a0c; --panel:#15151a; --accent:#3ddc97; --tech-color:#ff6b6b;
@@ -32,21 +33,36 @@
     button#finishBtn { background:var(--tech-color); color:#fff; font-weight:600; }
     button#finishBtn:hover { background:#ff8787; }
     button#overheadBtn.active { background:#ffb84d; color:#211200; border-color:#ffb84d; }
-    #titleInput { width:220px; }
+    button:disabled { opacity:0.4; cursor:not-allowed; }
+    #titleInput { width:200px; }
     #overheadSelect { display:none; }
 
-    /* ---- Split layout: main feed (left) | right column (keywords + overhead) ---- */
+    /* ---- Start screen ---- */
+    #startOverlay { position:fixed; inset:0; background:var(--bg); display:flex;
+      flex-direction:column; align-items:center; justify-content:center; z-index:200; gap:16px; }
+    #startOverlay h2 { font-size:22px; margin:0; }
+    #startOverlay p { color:var(--muted); font-size:14px; max-width:420px; text-align:center; margin:0; }
+    #startBtn { background:var(--accent); color:#05130c; font-weight:700; font-size:16px;
+      padding:14px 32px; border-radius:8px; border:none; }
+    #startBtn:hover { background:#4eeaab; }
+
+    /* ---- Split layout ---- */
     #layout { flex:1; display:flex; overflow:hidden; }
-    #mainCol { position:relative; flex:1; overflow:hidden; background:#000;
+    #mainCol { position:relative; flex:1; overflow:hidden; background:#000; min-width:200px;
       display:flex; align-items:center; justify-content:center; }
     #stageCanvas { width:100%; height:100%; background:#000; transition:transform 0.35s ease; }
-    #video, #overheadVideoHidden { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+    #video { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
 
-    #rightCol { width:300px; flex-shrink:0; display:flex; flex-direction:column;
-      background:var(--panel); border-left:1px solid #232329; }
+    #colResizer { width:6px; flex-shrink:0; cursor:col-resize; background:#232329; }
+    #colResizer:hover { background:var(--accent); }
 
-    /* Keyword panel occupies the top portion (grows to fill when no overhead feed) */
-    #sidepanel { flex:1; min-height:0; padding:14px; overflow-y:auto;
+    #rightCol { width:320px; flex-shrink:0; display:flex; flex-direction:column;
+      background:var(--panel); min-width:220px; max-width:600px; }
+
+    #panelHeader { padding:12px 14px 0; font-size:12px; color:var(--muted); }
+    #panelHeader b { color:var(--text); }
+
+    #sidepanel { flex:1; min-height:80px; padding:10px 14px 14px; overflow-y:auto;
       display:flex; flex-direction:column; gap:16px; }
     .panel-section h3 { font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted);
       margin:0 0 8px 0; display:flex; align-items:center; gap:6px; }
@@ -66,11 +82,14 @@
     .key { border-left:3px solid var(--key); }
     .empty { color:var(--muted); font-size:12px; font-style:italic; }
 
-    /* Overhead feed box — a separate, non-overlapping region below the keyword panel */
-    #overheadBox { display:none; flex-shrink:0; border-top:1px solid #232329; padding:10px 14px 14px; }
+    #rowResizer { height:6px; flex-shrink:0; cursor:row-resize; background:#232329; display:none; }
+    #rowResizer:hover { background:#ffb84d; }
+    #rowResizer.visible { display:block; }
+
+    #overheadBox { display:none; flex-shrink:0; padding:10px 14px 14px; height:200px; min-height:100px; }
     #overheadBox h3 { font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#ffb84d;
       margin:0 0 8px 0; }
-    #overheadFrame { position:relative; width:100%; aspect-ratio:16/9; background:#000;
+    #overheadFrame { position:relative; width:100%; height:calc(100% - 22px); background:#000;
       border:2px solid #ffb84d; border-radius:6px; overflow:hidden; }
     #overheadVideo { width:100%; height:100%; object-fit:contain; background:#000; }
 
@@ -97,6 +116,7 @@
       gap:6px; background:rgba(0,0,0,0.55); padding:6px 12px; border-radius:20px;
       font-size:12px; color:var(--muted); z-index:15; }
     #listening-indicator .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite; }
+    #listening-indicator.paused .dot { background:#ff4757; animation:none; }
 
     #export-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); display:none;
       align-items:center; justify-content:center; z-index:100; }
@@ -110,17 +130,29 @@
     #export-links a { color:var(--accent); display:block; margin-top:8px; text-decoration:none; }
     #export-links a:hover { text-decoration:underline; }
     #closeExport { margin-top:16px; }
-    #config-banner { display:none; background:#ff6b6b; color:#200606; font-size:13px;
-      padding:8px 18px; text-align:center; font-weight:600; }
   </style>
 </head>
 <body>
-<div id="config-banner">Set APPS_SCRIPT_URL at the top of the script to your deployed Apps Script Web App URL before use.</div>
+<div id="startOverlay">
+  <h2>Classroom Live Visualizer</h2>
+  <p>Camera, microphone, and live transcription will start once you press Start. Panel sizes and lesson-type settings are remembered between sessions.</p>
+  <select id="lessonTypeStart">
+    <option value="cooking">Cooking Demonstration</option>
+    <option value="tech">Technology / Workshop (General)</option>
+  </select>
+  <input type="text" id="titleInputStart" placeholder="Recipe / technique / focus skill…" style="width:280px;">
+  <button id="startBtn">Start Recording &amp; Transcription</button>
+</div>
+
 <div id="app">
   <div id="topbar">
     <h1><span id="status-dot"></span>Classroom Live Visualizer</h1>
     <div id="controls">
       <input type="text" id="titleInput" placeholder="Recipe / technique / focus skill…">
+      <select id="lessonType">
+        <option value="cooking">Cooking</option>
+        <option value="tech">Technology (General)</option>
+      </select>
       <select id="cameraSelect" title="Switch main camera"></select>
       <button id="overheadBtn" title="Add/remove overhead camera">Add Overhead Feed</button>
       <select id="overheadSelect" title="Choose overhead camera"></select>
@@ -135,12 +167,11 @@
   <div id="layout">
     <div id="mainCol">
       <video id="video" autoplay playsinline muted></video>
-      <video id="overheadVideoHidden" autoplay playsinline muted></video>
       <canvas id="stageCanvas"></canvas>
       <div id="freeze-overlay">FROZEN — press Space to resume</div>
       <div id="zoom-indicator">Zoomed 2.5x</div>
       <div id="flip-indicator">Flipped 180°</div>
-      <div id="listening-indicator"><span class="dot"></span>Listening (transcript hidden)</div>
+      <div id="listening-indicator"><span class="dot"></span><span id="listeningLabel">Listening (transcript hidden)</span></div>
       <div id="caption-zone">
         <div id="badge-row"></div>
         <div id="current-caption">Listening…</div>
@@ -148,25 +179,30 @@
       </div>
     </div>
 
+    <div id="colResizer" title="Drag to resize panel"></div>
+
     <div id="rightCol">
+      <div id="panelHeader">Focus: <b id="focusLabel">Untitled</b></div>
       <div id="sidepanel">
         <div class="panel-section">
-          <h3><span class="pdot" style="background:var(--tool)"></span>Tools &amp; Equipment</h3>
+          <h3><span class="pdot" style="background:var(--tool)"></span><span id="toolsHeading">Tools &amp; Equipment</span></h3>
           <div id="toolList"><div class="empty">None detected yet…</div></div>
         </div>
         <div class="panel-section">
-          <h3><span class="pdot" style="background:var(--measure)"></span>Measurements</h3>
+          <h3><span class="pdot" style="background:var(--measure)"></span><span id="measuresHeading">Ingredients &amp; Quantities</span></h3>
           <div id="measureList"><div class="empty">None detected yet…</div></div>
         </div>
         <div class="panel-section">
           <h3><span class="pdot" style="background:var(--tech-color)"></span>Techniques &amp; Safety</h3>
           <div id="techList"><div class="empty">None detected yet…</div></div>
         </div>
-        <div class="panel-section">
-          <h3><span class="pdot" style="background:var(--key)"></span>Key Terms</h3>
+        <div class="panel-section" id="keyTermSection">
+          <h3><span class="pdot" style="background:var(--key)"></span><span id="keyHeading">Key Terms</span></h3>
           <div id="keyList"><div class="empty">None detected yet…</div></div>
         </div>
       </div>
+
+      <div id="rowResizer" title="Drag to resize overhead box"></div>
 
       <div id="overheadBox">
         <h3>Overhead Feed</h3>
@@ -188,19 +224,36 @@
 
 <script>
 (function() {
-  const APPS_SCRIPT_URL = "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE";
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxGOCwP9quMjn8Gbna-2VJaEPDOebcOSKGisrb7efke1ilvSGpjLEI1hUpqzU7-elyfJw/exec";
+
   const SHOW_LIVE_CAPTIONS = false;
+  const LS_PREFIX = 'clv_';
 
-  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("PASTE_YOUR") !== -1) {
-    document.getElementById('config-banner').style.display = 'block';
-  }
+  // ---------- Dictionaries per lesson type ----------
+  const DICTS = {
+    cooking: {
+      tools: ["knife","frying pan","saucepan","oven","mixer","whisk","spatula","tongs",
+        "grater","peeler","chopping board","thermometer","mixing bowl","rolling pin"],
+      terms: ["flour","sugar","salt","butter","oil","egg","dough","batter","milk","yeast",
+        "baking powder","vanilla","cream","cheese","garlic","onion","tomato","chicken","beef","rice"],
+      toolsLabel: "Kitchen Tools",
+      measuresLabel: "Ingredients & Quantities",
+      keyLabel: "Other Ingredients",
+      focusPrefix: "Dish"
+    },
+    tech: {
+      tools: ["chisel","saw","drill","clamp","file","vice","press","hammer","screwdriver",
+        "sander","router","soldering iron","glue gun","tape measure","square"],
+      terms: ["timber","plywood","steel","aluminium","fabric","glue","paint","varnish",
+        "acrylic","mdf","copper","brass","solder","circuit","resistor"],
+      toolsLabel: "Tools & Equipment",
+      measuresLabel: "Measurements",
+      keyLabel: "Materials / Key Terms",
+      focusPrefix: "Focus Skill"
+    }
+  };
 
-  const MEASUREMENT_REGEX = /\b\d+(\.\d+)?\s*(g|kg|ml|l|cups?|tbsp|tsp|teaspoons?|tablespoons?|degrees?|°[CF]?|mm|cm|inches?|minutes?|mins?|seconds?|secs?|hours?|hrs?)\b/gi;
-  const TOOL_WORDS = ["knife","blade","pan","frying pan","saucepan","oven","mixer","whisk",
-    "spatula","tongs","grater","peeler","chopping board","thermometer",
-    "chisel","saw","drill","clamp","file","vice","press","hammer","screwdriver","sander","router"];
-  const KEY_TERM_FALLBACK = ["flour","sugar","salt","butter","oil","egg","dough","batter",
-    "timber","plywood","steel","aluminium","fabric","glue","paint","varnish"];
+  const MEASUREMENT_REGEX = /\b\d+(\.\d+)?\s*(g|kg|ml|l|cups?|tbsp|tsp|teaspoons?|tablespoons?|degrees?|°[CF]?|mm|cm|inches?|minutes?|mins?|seconds?|secs?|hours?|hrs?)\b/i;
   const STEP_PATTERNS = [
     /^\s*first\b/i, /^\s*next\b/i, /^\s*then\b/i, /^\s*after that\b/i,
     /^\s*now we\b/i, /^\s*step\s*\d+/i, /^\s*finally\b/i, /^\s*once .*then\b/i,
@@ -212,22 +265,34 @@
     /the key (is|here)/i, /important to/i, /watch (out|your)/i, /never/i, /always/i
   ];
 
+  let lessonType = localStorage.getItem(LS_PREFIX + 'lessonType') || 'cooking';
+  let activeDict = DICTS[lessonType];
+
   let mainStream = null, overheadStream = null, overheadActive = false;
   let mediaRecorder = null, recordedChunks = [];
   let currentZoom = 1, zoomOriginX = 0.5, zoomOriginY = 0.5;
   let mirrored = false, flipped = false, frozen = false;
-  let recognizer = null, sessionStartTime = null;
+  let recognizer = null, recognitionShouldRun = false, recognitionActive = false;
+  let noSpeechCount = 0;
+  let sessionStartTime = null;
   let transcriptLog = [];
   let currentDevices = [];
   let displayRafId = null, recordRafId = null;
   let thumbnailBase64 = null;
-  const seenTools = new Set(), seenMeasures = new Set(), seenKeys = new Set();
+
+  const seenTools = new Set();
+  const measureChipsByTerm = new Map();   // ingredient/material term -> chip element (combined measurement+term)
+  const standaloneMeasureSet = new Set(); // process measurements not tied to a term (e.g. "10 minutes")
+  const keyChipsByTerm = new Map();       // standalone key-term chips, removed if later combined with a measurement
 
   const mainVideo = document.getElementById('video');
   const overheadVideo = document.getElementById('overheadVideo');
   const displayCanvas = document.getElementById('stageCanvas');
   const displayCtx = displayCanvas.getContext('2d');
   const mainCol = document.getElementById('mainCol');
+  const rightCol = document.getElementById('rightCol');
+  const colResizer = document.getElementById('colResizer');
+  const rowResizer = document.getElementById('rowResizer');
 
   const recordCanvas = document.createElement('canvas');
   const recordCtx = recordCanvas.getContext('2d');
@@ -235,6 +300,13 @@
 
   const statusDot = document.getElementById('status-dot');
   const titleInput = document.getElementById('titleInput');
+  const titleInputStart = document.getElementById('titleInputStart');
+  const lessonTypeSelect = document.getElementById('lessonType');
+  const lessonTypeStart = document.getElementById('lessonTypeStart');
+  const focusLabel = document.getElementById('focusLabel');
+  const toolsHeading = document.getElementById('toolsHeading');
+  const measuresHeading = document.getElementById('measuresHeading');
+  const keyHeading = document.getElementById('keyHeading');
   const cameraSelect = document.getElementById('cameraSelect');
   const overheadBtn = document.getElementById('overheadBtn');
   const overheadSelect = document.getElementById('overheadSelect');
@@ -252,10 +324,13 @@
   const historyStrip = document.getElementById('history-strip');
   const captionZone = document.getElementById('caption-zone');
   const listeningIndicator = document.getElementById('listening-indicator');
+  const listeningLabel = document.getElementById('listeningLabel');
   const toolList = document.getElementById('toolList');
   const measureList = document.getElementById('measureList');
   const techList = document.getElementById('techList');
   const keyList = document.getElementById('keyList');
+  const startOverlay = document.getElementById('startOverlay');
+  const startBtn = document.getElementById('startBtn');
 
   const exportOverlay = document.getElementById('export-overlay');
   const exportStatus = document.getElementById('export-status');
@@ -265,6 +340,74 @@
 
   if (SHOW_LIVE_CAPTIONS) { captionZone.style.display = 'flex'; listeningIndicator.style.display = 'none'; }
   else { captionZone.style.display = 'none'; listeningIndicator.style.display = 'flex'; }
+
+  // ---------- Persisted panel sizing ----------
+  function applyPanelSizing() {
+    const savedColWidth = localStorage.getItem(LS_PREFIX + 'rightColWidth');
+    if (savedColWidth) rightCol.style.width = savedColWidth + 'px';
+    const savedRowHeight = localStorage.getItem(LS_PREFIX + 'overheadHeight');
+    if (savedRowHeight) overheadBox.style.height = savedRowHeight + 'px';
+  }
+  applyPanelSizing();
+
+  function makeResizable(handle, onDrag, onDone) {
+    let dragging = false;
+    handle.addEventListener('mousedown', (e) => {
+      dragging = true; e.preventDefault();
+      const move = (ev) => { if (dragging) onDrag(ev); };
+      const up = () => {
+        dragging = false;
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+        onDone();
+      };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    });
+  }
+
+  makeResizable(colResizer, (e) => {
+    const layoutRect = document.getElementById('layout').getBoundingClientRect();
+    let newWidth = layoutRect.right - e.clientX;
+    newWidth = Math.max(220, Math.min(600, newWidth));
+    rightCol.style.width = newWidth + 'px';
+  }, () => {
+    localStorage.setItem(LS_PREFIX + 'rightColWidth', parseInt(rightCol.style.width, 10));
+  });
+
+  makeResizable(rowResizer, (e) => {
+    const rightRect = rightCol.getBoundingClientRect();
+    let newHeight = rightRect.bottom - e.clientY;
+    newHeight = Math.max(100, Math.min(rightRect.height - 100, newHeight));
+    overheadBox.style.height = newHeight + 'px';
+  }, () => {
+    localStorage.setItem(LS_PREFIX + 'overheadHeight', parseInt(overheadBox.style.height, 10));
+  });
+
+  // ---------- Lesson type / focus label ----------
+  function applyLessonType(type) {
+    lessonType = type;
+    activeDict = DICTS[type];
+    localStorage.setItem(LS_PREFIX + 'lessonType', type);
+    toolsHeading.textContent = activeDict.toolsLabel;
+    measuresHeading.textContent = activeDict.measuresLabel;
+    keyHeading.textContent = activeDict.keyLabel;
+    updateFocusLabel();
+  }
+
+  function updateFocusLabel() {
+    const t = titleInput.value.trim() || titleInputStart.value.trim();
+    focusLabel.textContent = t ? `${activeDict.focusPrefix}: ${t}` : 'Untitled';
+  }
+
+  lessonTypeSelect.value = lessonType;
+  lessonTypeStart.value = lessonType;
+  applyLessonType(lessonType);
+
+  lessonTypeSelect.addEventListener('change', (e) => applyLessonType(e.target.value));
+  lessonTypeStart.addEventListener('change', (e) => { lessonTypeSelect.value = e.target.value; applyLessonType(e.target.value); });
+  titleInput.addEventListener('input', () => { titleInputStart.value = titleInput.value; updateFocusLabel(); });
+  titleInputStart.addEventListener('input', () => { titleInput.value = titleInputStart.value; updateFocusLabel(); });
 
   function classify(text) {
     for (const p of STEP_PATTERNS) if (p.test(text)) return "STEP";
@@ -281,31 +424,98 @@
     return `${hh}:${mm}:${ss}`;
   }
 
-  function addChip(container, text, cssClass, seenSet) {
+  function makeChip(text) {
+    const chip = document.createElement('div');
+    chip.innerHTML = `<span class="label">${text}</span><span class="time">${elapsedTimeStr()}</span>`;
+    return chip;
+  }
+
+  function flashUpdate(chip) {
+    chip.style.animation = 'none';
+    requestAnimationFrame(() => { chip.style.animation = 'chipIn 1.4s ease'; });
+  }
+
+  function addSimpleChip(container, text, cssClass, seenSet) {
     const norm = text.toLowerCase().trim();
     if (seenSet.has(norm)) return;
     seenSet.add(norm);
     if (container.querySelector('.empty')) container.innerHTML = '';
-    const chip = document.createElement('div');
+    const chip = makeChip(text);
     chip.className = 'chip ' + cssClass;
-    chip.innerHTML = `<span>${text}</span><span class="time">${elapsedTimeStr()}</span>`;
     container.appendChild(chip);
     container.scrollTop = container.scrollHeight;
   }
 
-  function extractCategories(text) {
-    const measureMatches = text.match(MEASUREMENT_REGEX);
-    if (measureMatches) measureMatches.forEach(m => addChip(measureList, m.trim(), 'measure', seenMeasures));
-
-    const lower = text.toLowerCase();
-    TOOL_WORDS.forEach(tool => { if (lower.includes(tool)) addChip(toolList, tool, 'tool', seenTools); });
-
-    const proximityMatch = /\b\d+(\.\d+)?\s*\w+\s+(?:of|the)\s+([a-z][a-z\s]{2,20})/i.exec(text);
-    if (proximityMatch) {
-      const term = proximityMatch[2].trim().split(/\s+/).slice(0, 2).join(' ');
-      addChip(keyList, term, 'key', seenKeys);
+  // Adds/updates a combined "measurement + ingredient" chip, keyed by the
+  // ingredient/material term so restated amounts correct the existing entry
+  // instead of creating a duplicate. Also removes any standalone Key Term
+  // chip for the same term, since it's now been quantified.
+  function addOrUpdateMeasureTerm(term, combinedLabel) {
+    const norm = term.toLowerCase().trim();
+    if (measureChipsByTerm.has(norm)) {
+      const chip = measureChipsByTerm.get(norm);
+      chip.querySelector('.label').textContent = combinedLabel;
+      chip.querySelector('.time').textContent = elapsedTimeStr();
+      flashUpdate(chip);
+    } else {
+      if (measureList.querySelector('.empty')) measureList.innerHTML = '';
+      const chip = makeChip(combinedLabel);
+      chip.className = 'chip measure';
+      measureList.appendChild(chip);
+      measureChipsByTerm.set(norm, chip);
+      measureList.scrollTop = measureList.scrollHeight;
     }
-    KEY_TERM_FALLBACK.forEach(term => { if (lower.includes(term)) addChip(keyList, term, 'key', seenKeys); });
+    if (keyChipsByTerm.has(norm)) {
+      const oldChip = keyChipsByTerm.get(norm);
+      oldChip.remove();
+      keyChipsByTerm.delete(norm);
+      if (keyList.children.length === 0) keyList.innerHTML = '<div class="empty">None detected yet…</div>';
+    }
+  }
+
+  function addKeyTermChip(term) {
+    const norm = term.toLowerCase().trim();
+    if (keyChipsByTerm.has(norm) || measureChipsByTerm.has(norm)) return;
+    if (keyList.querySelector('.empty')) keyList.innerHTML = '';
+    const chip = makeChip(term);
+    chip.className = 'chip key';
+    keyList.appendChild(chip);
+    keyChipsByTerm.set(norm, chip);
+    keyList.scrollTop = keyList.scrollHeight;
+  }
+
+  function extractCategories(text) {
+    const lower = text.toLowerCase();
+
+    activeDict.tools.forEach(tool => { if (lower.includes(tool)) addSimpleChip(toolList, tool, 'tool', seenTools); });
+
+    // Find each measurement occurrence and check the words immediately
+    // following it against the active ingredient/material dictionary.
+    const words = text.split(/\s+/);
+    let matchedAnyTerm = false;
+    const measureRe = new RegExp(MEASUREMENT_REGEX.source, 'gi');
+    let m;
+    while ((m = measureRe.exec(text)) !== null) {
+      const measurementText = m[0].trim();
+      const after = text.slice(m.index + m[0].length, m.index + m[0].length + 40).toLowerCase();
+      let foundTerm = null;
+      for (const term of activeDict.terms) {
+        if (after.includes(term)) { foundTerm = term; break; }
+      }
+      if (foundTerm) {
+        addOrUpdateMeasureTerm(foundTerm, `${measurementText} ${foundTerm}`);
+        matchedAnyTerm = true;
+      } else if (!standaloneMeasureSet.has(measurementText.toLowerCase())) {
+        standaloneMeasureSet.add(measurementText.toLowerCase());
+        addSimpleChip(measureList, measurementText, 'measure', new Set()); // process parameter, not ingredient-linked
+      }
+    }
+
+    // Any dictionary term mentioned without an accompanying measurement in
+    // this utterance still gets logged as a standalone key term.
+    activeDict.terms.forEach(term => {
+      if (lower.includes(term)) addKeyTermChip(term);
+    });
   }
 
   function resizeDisplayCanvas() {
@@ -342,9 +552,7 @@
   }
 
   function renderDisplayFrame() {
-    if (!frozen) {
-      drawMainFeed(displayCtx, 0, 0, displayCanvas.width, displayCanvas.height);
-    }
+    if (!frozen) drawMainFeed(displayCtx, 0, 0, displayCanvas.width, displayCanvas.height);
     displayRafId = requestAnimationFrame(renderDisplayFrame);
   }
 
@@ -352,7 +560,6 @@
     if (!frozen) {
       recordCtx.fillStyle = '#000';
       recordCtx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
-
       if (overheadActive && overheadVideo.videoWidth) {
         const mainW = recordCanvas.width * 0.72;
         const overheadW = recordCanvas.width - mainW;
@@ -376,12 +583,10 @@
     const canvasStream = recordCanvas.captureStream(30);
     const audioTrack = mainStream.getAudioTracks()[0];
     if (audioTrack) canvasStream.addTrack(audioTrack);
-
     let mimeType = 'video/webm;codecs=vp9,opus';
     if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
     try { mediaRecorder = new MediaRecorder(canvasStream, { mimeType }); }
     catch (e) { mediaRecorder = new MediaRecorder(canvasStream); }
-
     mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
     mediaRecorder.start(1000);
     sessionStartTime = Date.now();
@@ -397,13 +602,12 @@
     mainStream = await navigator.mediaDevices.getUserMedia(constraints);
     mainVideo.srcObject = mainStream;
     statusDot.classList.add('live');
-
     if (!mediaRecorder) {
       resizeDisplayCanvas();
       renderDisplayFrame();
       renderRecordFrame();
       startRecorder();
-      initSpeech();
+      startSpeech();
     }
   }
 
@@ -445,7 +649,9 @@
       overheadBtn.textContent = 'Remove Overhead Feed';
       overheadBtn.classList.add('active');
       overheadBox.style.display = 'block';
+      rowResizer.classList.add('visible');
       overheadSelect.style.display = 'none';
+      applyPanelSizing();
     } catch (err) { console.log('Overhead camera failed to start:', err.message); }
   });
 
@@ -455,6 +661,7 @@
     overheadBtn.textContent = 'Add Overhead Feed';
     overheadBtn.classList.remove('active');
     overheadBox.style.display = 'none';
+    rowResizer.classList.remove('visible');
     overheadSelect.style.display = 'none';
     overheadSelect.value = '';
   }
@@ -498,15 +705,20 @@
     if (e.key.toLowerCase() === 'f') { toggleFlip(); }
   });
 
-  function initSpeech() {
+  // ---------- Speech recognition with robust auto-restart ----------
+  function startSpeech() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) { console.log('Speech recognition not supported.'); return; }
+    recognitionShouldRun = true;
     recognizer = new SpeechRecognition();
     recognizer.continuous = true;
     recognizer.interimResults = true;
     recognizer.lang = 'en-AU';
 
+    recognizer.onstart = () => { recognitionActive = true; noSpeechCount = 0; listeningIndicator.classList.remove('paused'); };
+
     recognizer.onresult = (event) => {
+      noSpeechCount = 0;
       let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
@@ -518,7 +730,7 @@
             transcriptLog.push({ time, type, text });
             renderCaption(text, type);
             extractCategories(text);
-            if (type === 'TECHNIQUE') addChip(techList, text, 'tech', new Set());
+            if (type === 'TECHNIQUE') addSimpleChip(techList, text, 'tech', new Set());
           }
         } else {
           interim = text;
@@ -526,9 +738,37 @@
       }
       if (interim) renderCaption(interim, "SPEECH", true);
     };
-    recognizer.onerror = (e) => console.log('Speech recognition error', e.error);
-    recognizer.onend = () => { if (mainStream) setTimeout(() => { try { recognizer.start(); } catch (err) {} }, 400); };
-    try { recognizer.start(); } catch (e) { console.log('Could not start recognition', e); }
+
+    recognizer.onerror = (e) => {
+      console.log('Speech recognition error:', e.error);
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        recognitionShouldRun = false;
+        listeningIndicator.classList.add('paused');
+        listeningLabel.textContent = 'Transcription unavailable (mic permission)';
+      } else if (e.error === 'no-speech') {
+        noSpeechCount++;
+      }
+      // onend fires after onerror in Chrome; restart logic lives there.
+    };
+
+    recognizer.onend = () => {
+      recognitionActive = false;
+      if (!recognitionShouldRun) return;
+      const delay = noSpeechCount > 3 ? 1500 : 400;
+      setTimeout(restartRecognizerSafe, delay);
+    };
+
+    try { recognizer.start(); } catch (e) { console.log('Could not start recognition:', e.message); }
+  }
+
+  function restartRecognizerSafe() {
+    if (!recognitionShouldRun || recognitionActive || !recognizer) return;
+    try { recognizer.start(); }
+    catch (e) {
+      if (e.name === 'InvalidStateError') return; // already running, ignore
+      console.log('Restart failed:', e.message);
+      setTimeout(restartRecognizerSafe, 1000);
+    }
   }
 
   function renderCaption(text, type, isInterim) {
@@ -550,12 +790,14 @@
   }
 
   finishBtn.addEventListener('click', async () => {
+    if (!mediaRecorder) return;
     exportOverlay.style.display = 'flex';
     exportStatus.textContent = 'Stopping recording…';
     spinner.style.display = 'block';
     closeExportBtn.style.display = 'none';
     exportLinks.innerHTML = '';
 
+    recognitionShouldRun = false;
     if (recognizer) { try { recognizer.stop(); } catch (e) {} }
 
     try { thumbnailBase64 = recordCanvas.toDataURL('image/png'); } catch (e) { thumbnailBase64 = null; }
@@ -612,23 +854,29 @@
 
   function onSaveFailure(err) {
     spinner.style.display = 'none';
-    exportStatus.textContent = 'Upload failed: ' + (err.message || err) + ' — check that your Apps Script deployment is redeployed with the latest code.';
+    exportStatus.textContent = 'Upload failed: ' + (err.message || err) + ' — check that your Apps Script deployment is redeployed with the latest code and APPS_SCRIPT_URL is set correctly in the script.';
     closeExportBtn.style.display = 'inline-block';
   }
 
   closeExportBtn.addEventListener('click', () => { exportOverlay.style.display = 'none'; });
 
-  async function boot() {
+  // ---------- Start button gates everything ----------
+  startBtn.addEventListener('click', async () => {
+    startBtn.disabled = true;
+    startBtn.textContent = 'Starting…';
+    titleInput.value = titleInputStart.value;
+    updateFocusLabel();
     try {
       resizeDisplayCanvas();
       await initMainMedia(null);
       await enumerateCameras();
+      startOverlay.style.display = 'none';
     } catch (err) {
-      console.log('Camera/mic access error:', err.message);
+      startBtn.disabled = false;
+      startBtn.textContent = 'Start Recording & Transcription';
+      alert('Camera/mic access error: ' + err.message);
     }
-  }
-
-  boot();
+  });
 })();
 </script>
 </body>
