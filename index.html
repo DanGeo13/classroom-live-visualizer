@@ -211,7 +211,7 @@
   // CONFIG — paste your deployed Apps Script Web App /exec URL below.
   // AI Classify requires GEMINI_API_KEY set in Apps Script Script Properties.
   // =====================================================================
-  const APPS_SCRIPT_URL = "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE";
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwuu5POgyazCZ9793tmDqlipZpILmWudPWJ3iHaiRZy15Bm-tHoB9shkQD6lK1zgkZoyg/exec";
   const AI_BATCH_INTERVAL_MS = 12000;
 
   const DICTS = {
@@ -220,7 +220,7 @@
     textiles: JSON.parse(document.getElementById('dict-textiles').textContent)
   };
 
-  const MEASUREMENT_REGEX = /\b(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|milligrams?|ml|mL|l|L|litres?|liters?|cups?|tbsp|tsp|teaspoons?|tablespoons?|dsp|dessertspoons?|degrees?|°[CF]?|celsius|fahrenheit|mm|millimetres?|cm|centimetres?|m|metres?|meters?|inches?|inch|\"|feet|ft|gsm|minutes?|mins?|seconds?|secs?|hours?|hrs?|pinch(?:es)?|dash(?:es)?|drop(?:s)?|glug(?:s)?|handful(?:s)?|cloves?|bunches?|sprigs?|sticks?|heads?|slices?|pieces?|wedges?|sheets?|knobs?)\b/gi;
+  const MEASUREMENT_REGEX = /\b(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|milligrams?|ml|mL|l|L|litres?|liters?|cups?|tbsp|tsp|teaspoons?|tablespoons?|dsp|dessertspoons?|degrees?|°[CF]?|celsius|fahrenheit|mm|millimetres?|cm|centimetres?|m|metres?|meters?|inches?|inch|"|feet|ft|gsm|minutes?|mins?|seconds?|secs?|hours?|hrs?|pinch(?:es)?|dash(?:es)?|drop(?:s)?|glug(?:s)?|handful(?:s)?|cloves?|bunches?|sprigs?|sticks?|heads?|slices?|pieces?|wedges?|sheets?|knobs?)\b/gi;
   const COUNT_PREFIX_REGEX = /^(?:(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?|(?:a\s+|one\s+|two\s+|three\s+|four\s+|five\s+|six\s+|seven\s+|eight\s+|nine\s+|ten\s+|half\s+a\s+|a\s+quarter\s+of\s+a\s+|a\s+pair\s+of\s+|a\s+dozen\s+|a\s+handful\s+of\s+|a\s+pinch\s+of\s+|a\s+dash\s+of\s+|a\s+glug\s+of\s+|a\s+clove\s+of\s+|a\s+head\s+of\s+|a\s+sprig\s+of\s+|a\s+stick\s+of\s+|a\s+piece\s+of\s+|a\s+slice\s+of\s+))/i;
 
   const STEP_PATTERNS = [
