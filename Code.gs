@@ -1,20 +1,16 @@
 /**
- * Classroom Live Visualizer - Backend API (v4)
+ * Classroom Live Visualizer - Backend API (v5)
  * Deploy as a Web App (Execute as: Me, Access: Anyone).
  *
- * NEW in v4: Gemini-powered semantic classification. Instead of relying
- * purely on hardcoded dictionary phrases, batches of transcript lines are
- * sent here and classified into Tools / Ingredients / Techniques by an
- * LLM, which understands paraphrases ("large metal bowl") that a fixed
- * word list never could.
+ * v5 change: classifyWithGemini_ is now STATEFUL. Each call receives the
+ * CURRENT authoritative lists (tools/ingredients/techniques) plus only the
+ * newest transcript lines, and Gemini returns the full corrected lists —
+ * refining quantities in place ("300g" -> "500g of sifted flour" becomes
+ * ONE updated entry, not two) and removing items explicitly cancelled
+ * ("don't worry about the sifted flour" removes it from the list).
  *
- * SETUP REQUIRED: In the Apps Script editor, go to Project Settings >
- * Script Properties > Add script property:
- *   Property: GEMINI_API_KEY
- *   Value:    <your Gemini API key from Google AI Studio>
- *
- * IMPORTANT: after editing this file, create a NEW deployment version
- * (Deploy > Manage deployments > pencil icon > New version > Deploy).
+ * SETUP REQUIRED: Script Properties > GEMINI_API_KEY (see earlier setup).
+ * IMPORTANT: create a NEW deployment version after editing this file.
  */
 
 const FOLDER_NAME = "Classroom Demonstrations";
@@ -44,7 +40,7 @@ function doPost(e) {
         payload.thumbnailBase64
       );
     } else if (action === "classifyTranscript") {
-      responseObj = classifyWithGemini_(payload.lines, payload.domain);
+      responseObj = classifyWithGemini_(payload.lines, payload.domain, payload.currentState);
     } else {
       responseObj = { success: false, message: "Unknown action: " + action };
     }
@@ -57,21 +53,28 @@ function doPost(e) {
 }
 
 /**
- * Sends a batch of transcript lines to the Gemini API and asks it to
- * classify mentions into tools/ingredients/techniques, normalizing
- * paraphrases and merging repeats itself. Returns:
- * { success, tools: [...], ingredients: [...], techniques: [...] }
+ * Stateful reconciliation: sends Gemini the CURRENT tracked lists plus the
+ * newest transcript lines, and asks for the FULL corrected lists back —
+ * refining, replacing, or removing entries as the transcript dictates,
+ * rather than blindly appending.
+ * Returns: { success, tools: [...], ingredients: [...], techniques: [...] }
  */
-function classifyWithGemini_(lines, domain) {
+function classifyWithGemini_(lines, domain, currentState) {
   try {
     const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
     if (!apiKey) {
       return { success: false, message: "GEMINI_API_KEY is not set in Script Properties." };
     }
     if (!lines || lines.length === 0) {
-      return { success: true, tools: [], ingredients: [], techniques: [] };
+      return {
+        success: true,
+        tools: (currentState && currentState.tools) || [],
+        ingredients: (currentState && currentState.ingredients) || [],
+        techniques: (currentState && currentState.techniques) || []
+      };
     }
 
+    const state = currentState || { tools: [], ingredients: [], techniques: [] };
     const transcriptText = lines.map(function(l) {
       return `[${l.time}] ${l.text}`;
     }).join('\n');
@@ -79,25 +82,33 @@ function classifyWithGemini_(lines, domain) {
     const domainLabel = domain || "general practical demonstration";
 
     const prompt =
-      "You are assisting a live classroom demonstration in the domain: " + domainLabel + ".\n" +
-      "Read the following transcript lines and extract distinct items into three categories:\n" +
-      "1. \"tools\": physical tools, equipment, or appliances mentioned. Use short natural names " +
-      "as actually described (e.g. \"large metal bowl\", \"chef's knife\", \"cordless drill\"). " +
-      "Recognize synonyms and paraphrases, not just standard names.\n" +
-      "2. \"ingredients\": ingredients or materials mentioned, combined with any stated quantity " +
-      "and preparation descriptor into one natural phrase, e.g. \"500 grams of sifted flour\", " +
-      "\"2 x roughly chopped tomatoes\". If no quantity was mentioned, just give the ingredient/material name.\n" +
-      "3. \"techniques\": any safety cues, techniques, or important instructional tips stated, as a short phrase close to verbatim.\n" +
-      "Merge repeated or paraphrased mentions of the same real-world item into a single best entry per category - " +
-      "do not list near-duplicates separately.\n" +
-      "Respond with ONLY valid minified JSON in exactly this shape, no markdown formatting, no explanation:\n" +
-      "{\"tools\":[\"...\"],\"ingredients\":[\"...\"],\"techniques\":[\"...\"]}\n\n" +
-      "Transcript:\n" + transcriptText;
+      "You are maintaining a live, continuously corrected classroom worksheet for a " + domainLabel + " demonstration.\n\n" +
+      "CURRENT STATE (the ground truth tracked so far):\n" +
+      "TOOLS: " + JSON.stringify(state.tools || []) + "\n" +
+      "INGREDIENTS: " + JSON.stringify(state.ingredients || []) + "\n" +
+      "TECHNIQUES: " + JSON.stringify(state.techniques || []) + "\n\n" +
+      "NEW TRANSCRIPT LINES spoken since the last update:\n" + transcriptText + "\n\n" +
+      "Update the three lists according to these rules:\n" +
+      "1. REFINE IN PLACE: if a new line corrects or adds detail to an item already tracked " +
+      "(e.g. \"actually make that 500 grams\" after \"300 grams of sifted flour\" was already tracked), " +
+      "REPLACE that existing entry with the corrected version. Never keep both the old and new version, " +
+      "and never add it again as a separate entry.\n" +
+      "2. REMOVE ON CANCELLATION: if a new line explicitly cancels, negates, or says an item is no longer " +
+      "needed (e.g. \"don't worry about the sifted flour\", \"we don't need the drill anymore\", \"scratch that\"), " +
+      "REMOVE that item entirely from its list.\n" +
+      "3. ADD NEW: if a new line introduces a genuinely new tool, ingredient, or technique not already tracked, add it. " +
+      "Recognize tools/ingredients even if described in everyday words rather than technical names " +
+      "(e.g. \"large metal bowl\" is a valid tool entry).\n" +
+      "4. PRESERVE: leave every other existing entry unchanged if the new lines don't affect it.\n" +
+      "5. MERGE: if a new line paraphrases something already tracked, merge into the single existing entry rather than duplicating.\n\n" +
+      "Respond with ONLY valid minified JSON — the COMPLETE corrected lists (not a diff, not just the changes), " +
+      "in exactly this shape, no markdown, no explanation:\n" +
+      "{\"tools\":[\"...\"],\"ingredients\":[\"...\"],\"techniques\":[\"...\"]}";
 
     const url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + apiKey;
     const requestPayload = {
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 512 }
+      generationConfig: { temperature: 0.15, maxOutputTokens: 768 }
     };
 
     const resp = UrlFetchApp.fetch(url, {

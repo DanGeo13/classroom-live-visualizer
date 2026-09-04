@@ -178,9 +178,8 @@
   </div>
 </div>
 
-<!-- Bundled dictionary databases: instant, imperfect first-pass matching.
-     AI Classify (Gemini, server-side) runs every ~12s to catch paraphrases
-     the dictionary can't, e.g. "large metal bowl" for a mixing bowl. -->
+<!-- Bundled dictionary databases: instant, imperfect first-pass matching
+     used only for immediate feedback between AI reconciliation cycles. -->
 <script id="dict-cooking" type="application/json">
 {
   "tools": ["chef's knife","chefs knife","cook's knife","chopping knife","french knife","paring knife","peeling knife","bread knife","serrated knife","boning knife","filleting knife","carving knife","santoku knife","utility knife","cleaver","kitchen shears","kitchen scissors","mandoline","mandolin","peeler","vegetable peeler","y-peeler","zester","microplane","grater","box grater","cheese grater","cutting board","chopping board","pizza cutter","apple corer","melon baller","egg slicer","knife sharpener","sharpening steel","whetstone","mixing bowl","whisk","balloon whisk","wooden spoon","spatula","silicone spatula","turner","fish slice","egg flip","tongs","kitchen tongs","ladle","slotted spoon","sieve","strainer","sifter","flour sifter","colander","measuring cups","measuring cup","measuring jug","measuring spoons","measuring spoon","rolling pin","pastry brush","basting brush","pastry cutter","bench scraper","dough scraper","funnel","kitchen scale","digital scale","mortar and pestle","can opener","tin opener","bottle opener","corkscrew","garlic press","garlic crusher","potato masher","masher","juicer","citrus juicer","salad spinner","piping bag","piping nozzle","cooling rack","wire rack","timer","kitchen timer","meat thermometer","food thermometer","probe thermometer","candy thermometer","pastry blender","dough hook","spider skimmer","kitchen twine","meat mallet","saucepan","pot","frying pan","skillet","frypan","non-stick pan","wok","stockpot","griddle pan","casserole dish","dutch oven","roasting pan","baking tray","baking sheet","sheet pan","oven tray","baking dish","muffin tin","cake tin","cake pan","loaf tin","springform pan","pie dish","steamer basket","bamboo steamer","double boiler","bain marie","pressure cooker","ramekin","oven","stove","stovetop","cooktop","induction cooktop","microwave","blender","food processor","stand mixer","kitchenaid","hand mixer","electric beaters","immersion blender","stick blender","toaster","kettle","slow cooker","air fryer","rice cooker","deep fryer","sandwich press","jaffle iron","sous vide machine","vacuum sealer","cling wrap","aluminium foil","tin foil","baking paper","parchment paper","zip lock bag","oven mitt","apron","tea towel"],
@@ -211,7 +210,7 @@
   // CONFIG — paste your deployed Apps Script Web App /exec URL below.
   // AI Classify requires GEMINI_API_KEY set in Apps Script Script Properties.
   // =====================================================================
-  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwuu5POgyazCZ9793tmDqlipZpILmWudPWJ3iHaiRZy15Bm-tHoB9shkQD6lK1zgkZoyg/exec";
+  const APPS_SCRIPT_URL = "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE";
   const AI_BATCH_INTERVAL_MS = 12000;
 
   const DICTS = {
@@ -220,7 +219,7 @@
     textiles: JSON.parse(document.getElementById('dict-textiles').textContent)
   };
 
-  const MEASUREMENT_REGEX = /\b(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|milligrams?|ml|mL|l|L|litres?|liters?|cups?|tbsp|tsp|teaspoons?|tablespoons?|dsp|dessertspoons?|degrees?|°[CF]?|celsius|fahrenheit|mm|millimetres?|cm|centimetres?|m|metres?|meters?|inches?|inch|"|feet|ft|gsm|minutes?|mins?|seconds?|secs?|hours?|hrs?|pinch(?:es)?|dash(?:es)?|drop(?:s)?|glug(?:s)?|handful(?:s)?|cloves?|bunches?|sprigs?|sticks?|heads?|slices?|pieces?|wedges?|sheets?|knobs?)\b/gi;
+  const MEASUREMENT_REGEX = /\b(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|milligrams?|ml|mL|l|L|litres?|liters?|cups?|tbsp|tsp|teaspoons?|tablespoons?|dsp|dessertspoons?|degrees?|°[CF]?|celsius|fahrenheit|mm|millimetres?|cm|centimetres?|m|metres?|meters?|inches?|inch|\"|feet|ft|gsm|minutes?|mins?|seconds?|secs?|hours?|hrs?|pinch(?:es)?|dash(?:es)?|drop(?:s)?|glug(?:s)?|handful(?:s)?|cloves?|bunches?|sprigs?|sticks?|heads?|slices?|pieces?|wedges?|sheets?|knobs?)\b/gi;
   const COUNT_PREFIX_REGEX = /^(?:(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?|(?:a\s+|one\s+|two\s+|three\s+|four\s+|five\s+|six\s+|seven\s+|eight\s+|nine\s+|ten\s+|half\s+a\s+|a\s+quarter\s+of\s+a\s+|a\s+pair\s+of\s+|a\s+dozen\s+|a\s+handful\s+of\s+|a\s+pinch\s+of\s+|a\s+dash\s+of\s+|a\s+glug\s+of\s+|a\s+clove\s+of\s+|a\s+head\s+of\s+|a\s+sprig\s+of\s+|a\s+stick\s+of\s+|a\s+piece\s+of\s+|a\s+slice\s+of\s+))/i;
 
   const STEP_PATTERNS = [
@@ -248,6 +247,12 @@
   let currentDevices = [];
   let displayRafId = null, recordRafId = null, overheadRafId = null;
   let thumbnailBase64 = null;
+
+  // AI-authoritative state: the reconciled ground truth from the last
+  // successful Gemini batch. Local dictionary matches provide instant
+  // interim feedback but get fully superseded by this on each AI cycle,
+  // so refinements/removals apply correctly instead of stacking up.
+  let aiState = { tools: [], ingredients: [], techniques: [] };
 
   const toolRegistry = new Map();
   const itemRegistry = new Map();
@@ -363,6 +368,7 @@
     setTimeout(() => el.classList.remove(aiSourced ? 'ai-pulse' : 'pulse'), 600);
   }
 
+  // Used only by the LOCAL dictionary pass for instant interim feedback.
   function upsertChip(registry, key, container, phrase, cssClass, aiSourced) {
     const normKey = key.toLowerCase().trim();
     if (registry.has(normKey)) {
@@ -379,6 +385,24 @@
       registry.set(normKey, { text: phrase, el: el });
       flashPulse(el, aiSourced);
     }
+  }
+
+  // Fully replaces a panel's contents from the AI-authoritative list —
+  // this is what makes refinements and removals actually take effect
+  // instead of stacking as separate entries.
+  function rebuildListFromAiState(container, registry, items, cssClass) {
+    container.innerHTML = '';
+    registry.clear();
+    if (!items || items.length === 0) {
+      container.innerHTML = '<div class="empty">None detected yet…</div>';
+      return;
+    }
+    items.forEach(text => {
+      const el = createChipElement(text, cssClass);
+      container.appendChild(el);
+      flashPulse(el, true);
+      registry.set(text.toLowerCase().trim(), { text: text, el: el });
+    });
   }
 
   function findDictMatch(textLower, dictArray) {
@@ -401,7 +425,8 @@
     return matches;
   }
 
-  // Instant local first-pass — fast but limited to known phrases.
+  // Instant local first-pass — fast but no memory of corrections; gets
+  // superseded by the next authoritative AI rebuild every ~12s.
   function extractCategoriesLocal(text) {
     const lower = text.toLowerCase();
     const dict = DICTS[currentDomain] || DICTS.cooking;
@@ -442,7 +467,7 @@
     }
   }
 
-  // ---------- AI Classify (Gemini, server-side via Apps Script) ----------
+  // ---------- AI Classify (Gemini, server-side via Apps Script, stateful) ----------
   function queueForAiClassification(entry) {
     if (!aiClassifyEnabled) return;
     pendingAiLines.push(entry);
@@ -456,13 +481,18 @@
     try {
       const resp = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
-        body: JSON.stringify({ action: 'classifyTranscript', lines: batch, domain: currentDomain })
+        body: JSON.stringify({ action: 'classifyTranscript', lines: batch, domain: currentDomain, currentState: aiState })
       });
       const result = await resp.json();
       if (result.success) {
-        (result.tools || []).forEach(t => upsertChip(toolRegistry, t, toolList, t, 'tool', true));
-        (result.ingredients || []).forEach(i => upsertChip(itemRegistry, i, measureList, i, 'measure', true));
-        (result.techniques || []).forEach(t => upsertChip(techRegistry, t, techList, t, 'tech', true));
+        aiState = {
+          tools: result.tools || [],
+          ingredients: result.ingredients || [],
+          techniques: result.techniques || []
+        };
+        rebuildListFromAiState(toolList, toolRegistry, aiState.tools, 'tool');
+        rebuildListFromAiState(measureList, itemRegistry, aiState.ingredients, 'measure');
+        rebuildListFromAiState(techList, techRegistry, aiState.techniques, 'tech');
       } else {
         console.log('AI classify skipped:', result.message);
       }
@@ -748,9 +778,6 @@
           transcriptLog.push(entry);
           extractCategoriesLocal(text);
           queueForAiClassification(entry);
-          if (type === 'TECHNIQUE') {
-            upsertChip(techRegistry, text, techList, text, 'tech', false);
-          }
         }
       }
     };
