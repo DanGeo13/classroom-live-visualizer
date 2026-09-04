@@ -32,8 +32,13 @@
     button#finishBtn { background:var(--tech-color); color:#fff; font-weight:600; }
     button#finishBtn:hover { background:#ff8787; }
     button#overheadBtn.active { background:#ffb84d; color:#211200; border-color:#ffb84d; }
-    #titleInput { width:200px; }
+    #titleInput { width:190px; }
     #overheadSelect { display:none; }
+
+    .toggle-wrap { display:flex; align-items:center; gap:6px; background:#1f1f26;
+      border:1px solid #33333c; border-radius:6px; padding:6px 10px; font-size:13px; cursor:pointer; }
+    .toggle-wrap input { cursor:pointer; }
+    .toggle-wrap.on { border-color:var(--accent); }
 
     /* ---- Split layout: main feed (left) | right column (keywords + overhead) ---- */
     #layout { flex:1; display:flex; overflow:hidden; }
@@ -48,7 +53,6 @@
     #focusHeader { padding:12px 14px 6px; font-size:13px; color:var(--muted); border-bottom:1px solid #1f1f26; }
     #focusHeader b { color:var(--text); }
 
-    /* Keyword panel occupies top portion, scrollable */
     #sidepanel { flex:1; min-height:0; padding:12px 14px; overflow-y:auto;
       display:flex; flex-direction:column; gap:16px; }
     .panel-section h3 { font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted);
@@ -68,7 +72,6 @@
     .tech { border-left:3px solid var(--tech-color); }
     .empty { color:var(--muted); font-size:12px; font-style:italic; }
 
-    /* Overhead feed box in right column */
     #overheadBox { display:none; flex-shrink:0; border-top:1px solid #232329; padding:10px 14px 14px; }
     #overheadBox h3 { font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#ffb84d;
       margin:0 0 8px 0; }
@@ -82,10 +85,10 @@
     #flip-indicator { position:absolute; top:50px; right:14px; background:rgba(0,0,0,0.55);
       color:var(--tech-color); padding:6px 12px; border-radius:20px; font-size:12px; display:none; z-index:15; }
 
-    #listening-indicator { position:absolute; bottom:14px; left:14px; display:flex; align-items:center;
+    #mode-indicator { position:absolute; bottom:14px; left:14px; display:flex; align-items:center;
       gap:6px; background:rgba(0,0,0,0.55); padding:6px 12px; border-radius:20px;
       font-size:12px; color:var(--muted); z-index:15; }
-    #listening-indicator .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite; }
+    #mode-indicator .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pulse 1.5s infinite; }
 
     #export-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); display:none;
       align-items:center; justify-content:center; z-index:100; }
@@ -99,12 +102,9 @@
     #export-links a { color:var(--accent); display:block; margin-top:8px; text-decoration:none; }
     #export-links a:hover { text-decoration:underline; }
     #closeExport { margin-top:16px; }
-    #config-banner { display:none; background:#ff6b6b; color:#200606; font-size:13px;
-      padding:8px 18px; text-align:center; font-weight:600; }
   </style>
 </head>
 <body>
-<div id="config-banner">Set APPS_SCRIPT_URL at the top of the script to your deployed Apps Script Web App URL before use.</div>
 <div id="app">
   <div id="topbar">
     <h1><span id="status-dot"></span>Classroom Live Visualizer</h1>
@@ -115,6 +115,8 @@
         <option value="timber">Timber Technology</option>
         <option value="textiles">Textiles &amp; Sewing</option>
       </select>
+      <label class="toggle-wrap on" id="recordWrap"><input type="checkbox" id="recordToggle" checked> Record</label>
+      <label class="toggle-wrap on" id="transcribeWrap"><input type="checkbox" id="transcribeToggle" checked> Transcribe</label>
       <select id="cameraSelect" title="Switch main camera"></select>
       <button id="overheadBtn" title="Add/remove overhead camera">Add Overhead Feed</button>
       <select id="overheadSelect" title="Choose overhead camera"></select>
@@ -134,7 +136,7 @@
       <div id="freeze-overlay">FROZEN — press Space to resume</div>
       <div id="zoom-indicator">Zoomed 2.5x</div>
       <div id="flip-indicator">Flipped 180°</div>
-      <div id="listening-indicator"><span class="dot"></span>Listening (transcript hidden)</div>
+      <div id="mode-indicator"><span class="dot"></span><span id="modeText">Recording + Transcribing</span></div>
     </div>
 
     <div id="rightCol">
@@ -199,14 +201,11 @@
 
 <script>
 (function() {
+  // =====================================================================
+  // CONFIG — paste your deployed Apps Script Web App /exec URL below.
+  // =====================================================================
   const APPS_SCRIPT_URL = "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE";
-  const SHOW_LIVE_CAPTIONS = false;
 
-  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("PASTE_YOUR") !== -1) {
-    document.getElementById('config-banner').style.display = 'block';
-  }
-
-  // Load dictionaries from bundled JSON scripts
   const DICTS = {
     cooking: JSON.parse(document.getElementById('dict-cooking').textContent),
     timber: JSON.parse(document.getElementById('dict-timber').textContent),
@@ -231,6 +230,7 @@
   let currentDomain = 'cooking';
   let mainStream = null, overheadStream = null, overheadActive = false;
   let mediaRecorder = null, recordedChunks = [];
+  let recordingEnabled = true, transcriptionEnabled = true;
   let currentZoom = 1, zoomOriginX = 0.5, zoomOriginY = 0.5;
   let mirrored = false, flipped = false, frozen = false;
   let recognizer = null, sessionStartTime = null;
@@ -270,7 +270,11 @@
   const freezeOverlay = document.getElementById('freeze-overlay');
   const zoomIndicator = document.getElementById('zoom-indicator');
   const flipIndicator = document.getElementById('flip-indicator');
-  const listeningIndicator = document.getElementById('listening-indicator');
+  const modeText = document.getElementById('modeText');
+  const recordToggle = document.getElementById('recordToggle');
+  const transcribeToggle = document.getElementById('transcribeToggle');
+  const recordWrap = document.getElementById('recordWrap');
+  const transcribeWrap = document.getElementById('transcribeWrap');
   const toolList = document.getElementById('toolList');
   const measureList = document.getElementById('measureList');
   const techList = document.getElementById('techList');
@@ -280,6 +284,13 @@
   const exportLinks = document.getElementById('export-links');
   const spinner = document.getElementById('spinner');
   const closeExportBtn = document.getElementById('closeExport');
+
+  function updateModeText() {
+    const parts = [];
+    if (recordingEnabled) parts.push('Recording');
+    if (transcriptionEnabled) parts.push('Transcribing');
+    modeText.textContent = parts.length > 0 ? parts.join(' + ') : 'Display only';
+  }
 
   function updateDomainLabels() {
     currentDomain = domainSelect.value;
@@ -329,7 +340,6 @@
     container.scrollTop = container.scrollHeight;
   }
 
-  // Multi-word phrase matcher against a dictionary array. Returns longest match found.
   function findDictMatch(textLower, dictArray) {
     let longest = null;
     dictArray.forEach(term => {
@@ -341,7 +351,6 @@
     return longest;
   }
 
-  // Finds all descriptor matches (e.g. "roughly chopped", "sifted") occurring near a term.
   function findDescriptors(textLower, descriptorsArray) {
     const matches = [];
     descriptorsArray.forEach(d => {
@@ -351,26 +360,19 @@
     return matches;
   }
 
-  // Extracts unified Items (Quantity + Descriptors + Material/Ingredient) and Tools from an utterance.
   function extractCategories(text) {
     const lower = text.toLowerCase();
     const dict = DICTS[currentDomain] || DICTS.cooking;
 
-    // 1. Tools detection
     const matchedTool = findDictMatch(lower, dict.tools);
-    if (matchedTool) {
-      addChip(toolList, matchedTool, 'tool', seenTools);
-    }
+    if (matchedTool) addChip(toolList, matchedTool, 'tool', seenTools);
 
-    // 2. Unified Item extraction (combines measurement/count + descriptors + ingredient/material)
     const matchedMaterial = findDictMatch(lower, dict.materials);
     const measureMatches = text.match(MEASUREMENT_REGEX);
     const descriptors = findDescriptors(lower, dict.descriptors || []);
 
     if (matchedMaterial) {
       let fullPhrase = '';
-
-      // Check if there is a measurement quantity preceding or near the material
       if (measureMatches && measureMatches.length > 0) {
         const qty = measureMatches[0].trim();
         const descStr = descriptors.length > 0 ? descriptors.join(' ') + ' ' : '';
@@ -387,29 +389,22 @@
           fullPhrase = matchedMaterial;
         }
       }
-
-      if (fullPhrase) {
-        addChip(measureList, fullPhrase, 'measure', seenItems);
-      }
+      if (fullPhrase) addChip(measureList, fullPhrase, 'measure', seenItems);
     } else if (measureMatches) {
       measureMatches.forEach(m => addChip(measureList, m.trim(), 'measure', seenItems));
     }
   }
 
-  // ---------- Canvas sizing ----------
   function resizeCanvases() {
     const rect = mainCol.getBoundingClientRect();
     displayCanvas.width = rect.width;
     displayCanvas.height = rect.height;
-
     const obRect = overheadCanvas.getBoundingClientRect();
     overheadCanvas.width = obRect.width || 300;
     overheadCanvas.height = obRect.height || 169;
   }
   window.addEventListener('resize', resizeCanvases);
 
-  // PROPORTIONAL CONTAIN DRAW: scales the entire video frame uniformly to
-  // fill the canvas while preserving exact aspect ratio — never stretches or crops.
   function drawContain(targetCtx, videoEl, tx, ty, tw, th) {
     const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
     if (!vw || !vh) return;
@@ -437,9 +432,7 @@
   }
 
   function renderDisplayFrame() {
-    if (!frozen) {
-      drawMainFeed(displayCtx, 0, 0, displayCanvas.width, displayCanvas.height);
-    }
+    if (!frozen) drawMainFeed(displayCtx, 0, 0, displayCanvas.width, displayCanvas.height);
     displayRafId = requestAnimationFrame(renderDisplayFrame);
   }
 
@@ -452,12 +445,10 @@
     overheadRafId = requestAnimationFrame(renderOverheadFrame);
   }
 
-  // Decoupled recording canvas: main feed + overhead rendered side-by-side (72%/28%)
   function renderRecordFrame() {
     if (!frozen) {
       recordCtx.fillStyle = '#000';
       recordCtx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
-
       if (overheadActive && overheadVideo.videoWidth) {
         const mainW = recordCanvas.width * 0.72;
         const overheadW = recordCanvas.width - mainW;
@@ -487,10 +478,43 @@
     try { mediaRecorder = new MediaRecorder(canvasStream, { mimeType }); }
     catch (e) { mediaRecorder = new MediaRecorder(canvasStream); }
 
+    recordedChunks = [];
     mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
     mediaRecorder.start(1000);
-    sessionStartTime = Date.now();
+    if (!sessionStartTime) sessionStartTime = Date.now();
   }
+
+  function stopRecorderSilently() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.onstop = null;
+      try { mediaRecorder.stop(); } catch (e) {}
+    }
+    mediaRecorder = null;
+    recordedChunks = [];
+  }
+
+  recordToggle.addEventListener('change', () => {
+    recordingEnabled = recordToggle.checked;
+    recordWrap.classList.toggle('on', recordingEnabled);
+    if (recordingEnabled) {
+      if (!mediaRecorder && mainStream) startRecorder();
+    } else {
+      stopRecorderSilently();
+    }
+    updateModeText();
+  });
+
+  transcribeToggle.addEventListener('change', () => {
+    transcriptionEnabled = transcribeToggle.checked;
+    transcribeWrap.classList.toggle('on', transcriptionEnabled);
+    if (transcriptionEnabled) {
+      if (!recognizer) initSpeech();
+      else { try { recognizer.start(); } catch (e) {} }
+    } else {
+      if (recognizer) { try { recognizer.stop(); } catch (e) {} }
+    }
+    updateModeText();
+  });
 
   async function initMainMedia(deviceId) {
     if (mainStream) mainStream.getTracks().forEach(t => t.stop());
@@ -503,14 +527,15 @@
     mainVideo.srcObject = mainStream;
     statusDot.classList.add('live');
 
-    if (!mediaRecorder) {
+    if (!displayRafId) {
       resizeCanvases();
       renderDisplayFrame();
       renderRecordFrame();
       renderOverheadFrame();
-      startRecorder();
-      initSpeech();
     }
+    if (recordingEnabled && !mediaRecorder) startRecorder();
+    if (transcriptionEnabled && !recognizer) initSpeech();
+    updateModeText();
   }
 
   async function enumerateCameras() {
@@ -628,66 +653,79 @@
       }
     };
     recognizer.onerror = (e) => console.log('Speech recognition error', e.error);
-    recognizer.onend = () => { if (mainStream) setTimeout(() => { try { recognizer.start(); } catch (err) {} }, 400); };
+    recognizer.onend = () => {
+      if (mainStream && transcriptionEnabled) setTimeout(() => { try { recognizer.start(); } catch (err) {} }, 400);
+    };
     try { recognizer.start(); } catch (e) { console.log('Could not start recognition', e); }
+  }
+
+  async function uploadPayload(base64Video, durationSeconds, sessionTitle, mimeType) {
+    exportStatus.textContent = 'Uploading to Google Drive…';
+    try {
+      const resp = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'saveDemonstrationPackage',
+          base64Video: base64Video,
+          transcriptLog: transcriptLog,
+          sessionTitle: sessionTitle,
+          thumbnailBase64: thumbnailBase64,
+          meta: { durationSeconds: durationSeconds, mimeType: mimeType || 'none' }
+        })
+      });
+      if (!resp.ok) throw new Error('Server responded with status ' + resp.status);
+      const result = await resp.json();
+      onSaveSuccess(result);
+    } catch (err) {
+      onSaveFailure(err);
+    }
   }
 
   finishBtn.addEventListener('click', async () => {
     exportOverlay.style.display = 'flex';
-    exportStatus.textContent = 'Stopping recording…';
+    exportStatus.textContent = 'Stopping…';
     spinner.style.display = 'block';
     closeExportBtn.style.display = 'none';
     exportLinks.innerHTML = '';
 
     if (recognizer) { try { recognizer.stop(); } catch (e) {} }
 
-    try { thumbnailBase64 = recordCanvas.toDataURL('image/png'); } catch (e) { thumbnailBase64 = null; }
-
-    if (displayRafId) cancelAnimationFrame(displayRafId);
-    if (recordRafId) cancelAnimationFrame(recordRafId);
-    if (overheadRafId) cancelAnimationFrame(overheadRafId);
+    try {
+      const snapshotSource = (mediaRecorder && mediaRecorder.state === 'recording') ? recordCanvas : displayCanvas;
+      thumbnailBase64 = snapshotSource.toDataURL('image/png');
+    } catch (e) { thumbnailBase64 = null; }
 
     const durationSeconds = sessionStartTime ? (Date.now() - sessionStartTime) / 1000 : 0;
     const sessionTitle = titleInput.value.trim();
 
-    mediaRecorder.onstop = async () => {
-      exportStatus.textContent = 'Encoding video…';
-      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
-      const reader = new FileReader();
-      reader.onload = async function() {
-        const base64data = reader.result;
-        exportStatus.textContent = 'Uploading to Google Drive…';
-        try {
-          const resp = await fetch(APPS_SCRIPT_URL, {
-            method: 'POST',
-            body: JSON.stringify({
-              action: 'saveDemonstrationPackage',
-              base64Video: base64data,
-              transcriptLog: transcriptLog,
-              sessionTitle: sessionTitle,
-              thumbnailBase64: thumbnailBase64,
-              meta: { durationSeconds: durationSeconds, mimeType: mediaRecorder.mimeType || 'video/webm' }
-            })
-          });
-          if (!resp.ok) throw new Error('Server responded with status ' + resp.status);
-          const result = await resp.json();
-          onSaveSuccess(result);
-        } catch (err) {
-          onSaveFailure(err);
-        }
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      const recorderRef = mediaRecorder;
+      recorderRef.onstop = async () => {
+        exportStatus.textContent = 'Encoding video…';
+        const blob = new Blob(recordedChunks, { type: recorderRef.mimeType || 'video/webm' });
+        const reader = new FileReader();
+        reader.onload = async function() {
+          await uploadPayload(reader.result, durationSeconds, sessionTitle, recorderRef.mimeType || 'video/webm');
+        };
+        reader.readAsDataURL(blob);
       };
-      reader.readAsDataURL(blob);
-    };
-    mediaRecorder.stop();
+      recorderRef.stop();
+      mediaRecorder = null;
+    } else if (transcriptLog.length > 0) {
+      await uploadPayload(null, durationSeconds, sessionTitle, null);
+    } else {
+      exportStatus.textContent = 'Nothing to save yet — enable Record or Transcribe, or speak first.';
+      spinner.style.display = 'none';
+      closeExportBtn.style.display = 'inline-block';
+    }
   });
 
   function onSaveSuccess(result) {
     spinner.style.display = 'none';
     if (result.success) {
       exportStatus.textContent = 'Saved successfully!';
-      exportLinks.innerHTML = `
-        <a href="${result.videoUrl}" target="_blank">Open Video File</a>
-        <a href="${result.docUrl}" target="_blank">Open Demonstration Doc</a>`;
+      const videoLink = result.videoUrl ? `<a href="${result.videoUrl}" target="_blank">Open Video File</a>` : '';
+      exportLinks.innerHTML = `${videoLink}<a href="${result.docUrl}" target="_blank">Open Demonstration Doc</a>`;
     } else {
       exportStatus.textContent = 'Error: ' + result.message;
     }
@@ -696,7 +734,7 @@
 
   function onSaveFailure(err) {
     spinner.style.display = 'none';
-    exportStatus.textContent = 'Upload failed: ' + (err.message || err) + ' — verify that your Apps Script Web App is deployed with the latest Code.gs.';
+    exportStatus.textContent = 'Upload failed: ' + (err.message || err) + ' — verify your Apps Script Web App is deployed with the latest Code.gs.';
     closeExportBtn.style.display = 'inline-block';
   }
 
@@ -707,6 +745,7 @@
       resizeCanvases();
       await initMainMedia(null);
       await enumerateCameras();
+      updateModeText();
     } catch (err) {
       console.log('Camera/mic access error:', err.message);
     }
