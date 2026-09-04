@@ -1,13 +1,24 @@
 /**
- * Classroom Live Visualizer - Backend API (v3)
+ * Classroom Live Visualizer - Backend API (v4)
  * Deploy as a Web App (Execute as: Me, Access: Anyone).
- * Supports optional video: if base64Video is null/empty (Transcribe-only
- * or Display-only sessions), saves a Doc from the transcript alone.
+ *
+ * NEW in v4: Gemini-powered semantic classification. Instead of relying
+ * purely on hardcoded dictionary phrases, batches of transcript lines are
+ * sent here and classified into Tools / Ingredients / Techniques by an
+ * LLM, which understands paraphrases ("large metal bowl") that a fixed
+ * word list never could.
+ *
+ * SETUP REQUIRED: In the Apps Script editor, go to Project Settings >
+ * Script Properties > Add script property:
+ *   Property: GEMINI_API_KEY
+ *   Value:    <your Gemini API key from Google AI Studio>
+ *
  * IMPORTANT: after editing this file, create a NEW deployment version
  * (Deploy > Manage deployments > pencil icon > New version > Deploy).
  */
 
 const FOLDER_NAME = "Classroom Demonstrations";
+const GEMINI_MODEL = "gemini-2.5-flash-lite";
 
 function doGet() {
   return ContentService.createTextOutput(
@@ -32,6 +43,8 @@ function doPost(e) {
         payload.sessionTitle,
         payload.thumbnailBase64
       );
+    } else if (action === "classifyTranscript") {
+      responseObj = classifyWithGemini_(payload.lines, payload.domain);
     } else {
       responseObj = { success: false, message: "Unknown action: " + action };
     }
@@ -41,6 +54,85 @@ function doPost(e) {
 
   return ContentService.createTextOutput(JSON.stringify(responseObj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Sends a batch of transcript lines to the Gemini API and asks it to
+ * classify mentions into tools/ingredients/techniques, normalizing
+ * paraphrases and merging repeats itself. Returns:
+ * { success, tools: [...], ingredients: [...], techniques: [...] }
+ */
+function classifyWithGemini_(lines, domain) {
+  try {
+    const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+    if (!apiKey) {
+      return { success: false, message: "GEMINI_API_KEY is not set in Script Properties." };
+    }
+    if (!lines || lines.length === 0) {
+      return { success: true, tools: [], ingredients: [], techniques: [] };
+    }
+
+    const transcriptText = lines.map(function(l) {
+      return `[${l.time}] ${l.text}`;
+    }).join('\n');
+
+    const domainLabel = domain || "general practical demonstration";
+
+    const prompt =
+      "You are assisting a live classroom demonstration in the domain: " + domainLabel + ".\n" +
+      "Read the following transcript lines and extract distinct items into three categories:\n" +
+      "1. \"tools\": physical tools, equipment, or appliances mentioned. Use short natural names " +
+      "as actually described (e.g. \"large metal bowl\", \"chef's knife\", \"cordless drill\"). " +
+      "Recognize synonyms and paraphrases, not just standard names.\n" +
+      "2. \"ingredients\": ingredients or materials mentioned, combined with any stated quantity " +
+      "and preparation descriptor into one natural phrase, e.g. \"500 grams of sifted flour\", " +
+      "\"2 x roughly chopped tomatoes\". If no quantity was mentioned, just give the ingredient/material name.\n" +
+      "3. \"techniques\": any safety cues, techniques, or important instructional tips stated, as a short phrase close to verbatim.\n" +
+      "Merge repeated or paraphrased mentions of the same real-world item into a single best entry per category - " +
+      "do not list near-duplicates separately.\n" +
+      "Respond with ONLY valid minified JSON in exactly this shape, no markdown formatting, no explanation:\n" +
+      "{\"tools\":[\"...\"],\"ingredients\":[\"...\"],\"techniques\":[\"...\"]}\n\n" +
+      "Transcript:\n" + transcriptText;
+
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + apiKey;
+    const requestPayload = {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 512 }
+    };
+
+    const resp = UrlFetchApp.fetch(url, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify(requestPayload),
+      muteHttpExceptions: true
+    });
+
+    const status = resp.getResponseCode();
+    const bodyText = resp.getContentText();
+
+    if (status !== 200) {
+      return { success: false, message: "Gemini API returned status " + status + ": " + bodyText.substring(0, 200) };
+    }
+
+    const body = JSON.parse(bodyText);
+    if (!body.candidates || !body.candidates[0] || !body.candidates[0].content) {
+      return { success: false, message: "Unexpected Gemini response shape." };
+    }
+
+    let rawText = body.candidates[0].content.parts[0].text || "";
+    rawText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+
+    const parsed = JSON.parse(rawText);
+    return {
+      success: true,
+      tools: parsed.tools || [],
+      ingredients: parsed.ingredients || [],
+      techniques: parsed.techniques || []
+    };
+
+  } catch (err) {
+    return { success: false, message: "Gemini classification failed: " + err.message };
+  }
 }
 
 function getOrCreateFolder_() {
@@ -101,12 +193,6 @@ function decodeBase64Image_(base64Image, fileNamePrefix) {
   return Utilities.newBlob(bytes, mimeType, `${fileNamePrefix}.png`);
 }
 
-/**
- * Decodes optional video + optional thumbnail, saves to Drive, builds a
- * structured Google Doc. Video is entirely optional — if base64Video is
- * null/empty (Transcribe-only or Display-only sessions), the Doc is still
- * created from the transcript, just without a linked video file.
- */
 function saveDemonstrationPackage(base64Video, transcriptLog, meta, sessionTitle, thumbnailBase64) {
   try {
     meta = meta || {};

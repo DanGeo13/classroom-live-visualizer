@@ -7,7 +7,7 @@
   <style>
     :root {
       --bg:#0a0a0c; --panel:#15151a; --accent:#3ddc97; --tech-color:#ff6b6b;
-      --tool:#5aa9ff; --measure:#ffb84d; --text:#f2f2f5; --muted:#8a8a94;
+      --tool:#5aa9ff; --measure:#ffb84d; --text:#f2f2f5; --muted:#8a8a94; --ai:#c792ea;
     }
     * { box-sizing: border-box; }
     html, body { margin:0; padding:0; background:var(--bg); color:var(--text);
@@ -32,15 +32,15 @@
     button#finishBtn { background:var(--tech-color); color:#fff; font-weight:600; }
     button#finishBtn:hover { background:#ff8787; }
     button#overheadBtn.active { background:#ffb84d; color:#211200; border-color:#ffb84d; }
-    #titleInput { width:190px; }
+    #titleInput { width:180px; }
     #overheadSelect { display:none; }
 
     .toggle-wrap { display:flex; align-items:center; gap:6px; background:#1f1f26;
       border:1px solid #33333c; border-radius:6px; padding:6px 10px; font-size:13px; cursor:pointer; }
     .toggle-wrap input { cursor:pointer; }
     .toggle-wrap.on { border-color:var(--accent); }
+    #aiWrap.on { border-color:var(--ai); }
 
-    /* ---- Split layout: main feed (left) | right column (keywords + overhead) ---- */
     #layout { flex:1; display:flex; overflow:hidden; }
     #mainCol { position:relative; flex:1; overflow:hidden; background:#000;
       display:flex; align-items:center; justify-content:center; }
@@ -50,8 +50,11 @@
     #rightCol { width:320px; flex-shrink:0; display:flex; flex-direction:column;
       background:var(--panel); border-left:1px solid #232329; }
 
-    #focusHeader { padding:12px 14px 6px; font-size:13px; color:var(--muted); border-bottom:1px solid #1f1f26; }
+    #focusHeader { padding:12px 14px 6px; font-size:13px; color:var(--muted); border-bottom:1px solid #1f1f26;
+      display:flex; justify-content:space-between; align-items:center; }
     #focusHeader b { color:var(--text); }
+    #aiStatus { font-size:11px; color:var(--ai); display:none; align-items:center; gap:4px; }
+    #aiStatus .aidot { width:6px; height:6px; border-radius:50%; background:var(--ai); animation:pulse 1.2s infinite; }
 
     #sidepanel { flex:1; min-height:0; padding:12px 14px; overflow-y:auto;
       display:flex; flex-direction:column; gap:16px; }
@@ -60,13 +63,10 @@
     .pdot { width:8px; height:8px; border-radius:50%; display:inline-block; }
     .chip { display:flex; justify-content:space-between; align-items:center;
       background:#1f1f26; border-radius:6px; padding:6px 10px; margin-bottom:6px;
-      font-size:13px; animation:chipIn 1.4s ease; }
+      font-size:13px; transition:background 0.4s ease; }
+    .chip.pulse { background:#2a3f36; }
+    .chip.ai-pulse { background:#2e2540; }
     .chip .time { color:var(--muted); font-size:11px; margin-left:8px; white-space:nowrap; }
-    @keyframes chipIn {
-      0% { opacity:0; transform:translateX(12px); background:#2a3f36; }
-      15% { opacity:1; transform:translateX(0); background:#2a3f36; }
-      100% { background:#1f1f26; }
-    }
     .tool { border-left:3px solid var(--tool); }
     .measure { border-left:3px solid var(--measure); }
     .tech { border-left:3px solid var(--tech-color); }
@@ -117,6 +117,7 @@
       </select>
       <label class="toggle-wrap on" id="recordWrap"><input type="checkbox" id="recordToggle" checked> Record</label>
       <label class="toggle-wrap on" id="transcribeWrap"><input type="checkbox" id="transcribeToggle" checked> Transcribe</label>
+      <label class="toggle-wrap on" id="aiWrap"><input type="checkbox" id="aiToggle" checked> AI Classify</label>
       <select id="cameraSelect" title="Switch main camera"></select>
       <button id="overheadBtn" title="Add/remove overhead camera">Add Overhead Feed</button>
       <select id="overheadSelect" title="Choose overhead camera"></select>
@@ -140,7 +141,10 @@
     </div>
 
     <div id="rightCol">
-      <div id="focusHeader">Focus: <b id="focusLabel">Untitled</b></div>
+      <div id="focusHeader">
+        <span>Focus: <b id="focusLabel">Untitled</b></span>
+        <span id="aiStatus"><span class="aidot"></span>AI refining…</span>
+      </div>
       <div id="sidepanel">
         <div class="panel-section">
           <h3><span class="pdot" style="background:var(--tool)"></span><span id="secTitleTools">Tools &amp; Equipment</span></h3>
@@ -174,7 +178,9 @@
   </div>
 </div>
 
-<!-- Bundled dictionary databases -->
+<!-- Bundled dictionary databases: instant, imperfect first-pass matching.
+     AI Classify (Gemini, server-side) runs every ~12s to catch paraphrases
+     the dictionary can't, e.g. "large metal bowl" for a mixing bowl. -->
 <script id="dict-cooking" type="application/json">
 {
   "tools": ["chef's knife","chefs knife","cook's knife","chopping knife","french knife","paring knife","peeling knife","bread knife","serrated knife","boning knife","filleting knife","carving knife","santoku knife","utility knife","cleaver","kitchen shears","kitchen scissors","mandoline","mandolin","peeler","vegetable peeler","y-peeler","zester","microplane","grater","box grater","cheese grater","cutting board","chopping board","pizza cutter","apple corer","melon baller","egg slicer","knife sharpener","sharpening steel","whetstone","mixing bowl","whisk","balloon whisk","wooden spoon","spatula","silicone spatula","turner","fish slice","egg flip","tongs","kitchen tongs","ladle","slotted spoon","sieve","strainer","sifter","flour sifter","colander","measuring cups","measuring cup","measuring jug","measuring spoons","measuring spoon","rolling pin","pastry brush","basting brush","pastry cutter","bench scraper","dough scraper","funnel","kitchen scale","digital scale","mortar and pestle","can opener","tin opener","bottle opener","corkscrew","garlic press","garlic crusher","potato masher","masher","juicer","citrus juicer","salad spinner","piping bag","piping nozzle","cooling rack","wire rack","timer","kitchen timer","meat thermometer","food thermometer","probe thermometer","candy thermometer","pastry blender","dough hook","spider skimmer","kitchen twine","meat mallet","saucepan","pot","frying pan","skillet","frypan","non-stick pan","wok","stockpot","griddle pan","casserole dish","dutch oven","roasting pan","baking tray","baking sheet","sheet pan","oven tray","baking dish","muffin tin","cake tin","cake pan","loaf tin","springform pan","pie dish","steamer basket","bamboo steamer","double boiler","bain marie","pressure cooker","ramekin","oven","stove","stovetop","cooktop","induction cooktop","microwave","blender","food processor","stand mixer","kitchenaid","hand mixer","electric beaters","immersion blender","stick blender","toaster","kettle","slow cooker","air fryer","rice cooker","deep fryer","sandwich press","jaffle iron","sous vide machine","vacuum sealer","cling wrap","aluminium foil","tin foil","baking paper","parchment paper","zip lock bag","oven mitt","apron","tea towel"],
@@ -203,8 +209,10 @@
 (function() {
   // =====================================================================
   // CONFIG — paste your deployed Apps Script Web App /exec URL below.
+  // AI Classify requires GEMINI_API_KEY set in Apps Script Script Properties.
   // =====================================================================
-  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzmzGir6hb0sjMZ-1dENTZ9pKcw8BMzPpQ3jLbQhMRVFLpfOM4DF5eC-UVmj33XosO6/exec";
+  const APPS_SCRIPT_URL = "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE";
+  const AI_BATCH_INTERVAL_MS = 12000;
 
   const DICTS = {
     cooking: JSON.parse(document.getElementById('dict-cooking').textContent),
@@ -212,7 +220,7 @@
     textiles: JSON.parse(document.getElementById('dict-textiles').textContent)
   };
 
-  const MEASUREMENT_REGEX = /\b(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|milligrams?|ml|mL|l|L|litres?|liters?|cups?|tbsp|tsp|teaspoons?|tablespoons?|dsp|dessertspoons?|degrees?|°[CF]?|celsius|fahrenheit|mm|millimetres?|cm|centimetres?|m|metres?|meters?|inches?|inch|"|feet|ft|gsm|minutes?|mins?|seconds?|secs?|hours?|hrs?|pinch(?:es)?|dash(?:es)?|drop(?:s)?|glug(?:s)?|handful(?:s)?|cloves?|bunches?|sprigs?|sticks?|heads?|slices?|pieces?|wedges?|sheets?|knobs?)\b/gi;
+  const MEASUREMENT_REGEX = /\b(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|milligrams?|ml|mL|l|L|litres?|liters?|cups?|tbsp|tsp|teaspoons?|tablespoons?|dsp|dessertspoons?|degrees?|°[CF]?|celsius|fahrenheit|mm|millimetres?|cm|centimetres?|m|metres?|meters?|inches?|inch|\"|feet|ft|gsm|minutes?|mins?|seconds?|secs?|hours?|hrs?|pinch(?:es)?|dash(?:es)?|drop(?:s)?|glug(?:s)?|handful(?:s)?|cloves?|bunches?|sprigs?|sticks?|heads?|slices?|pieces?|wedges?|sheets?|knobs?)\b/gi;
   const COUNT_PREFIX_REGEX = /^(?:(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?|(?:a\s+|one\s+|two\s+|three\s+|four\s+|five\s+|six\s+|seven\s+|eight\s+|nine\s+|ten\s+|half\s+a\s+|a\s+quarter\s+of\s+a\s+|a\s+pair\s+of\s+|a\s+dozen\s+|a\s+handful\s+of\s+|a\s+pinch\s+of\s+|a\s+dash\s+of\s+|a\s+glug\s+of\s+|a\s+clove\s+of\s+|a\s+head\s+of\s+|a\s+sprig\s+of\s+|a\s+stick\s+of\s+|a\s+piece\s+of\s+|a\s+slice\s+of\s+))/i;
 
   const STEP_PATTERNS = [
@@ -230,15 +238,20 @@
   let currentDomain = 'cooking';
   let mainStream = null, overheadStream = null, overheadActive = false;
   let mediaRecorder = null, recordedChunks = [];
-  let recordingEnabled = true, transcriptionEnabled = true;
+  let recordingEnabled = true, transcriptionEnabled = true, aiClassifyEnabled = true;
   let currentZoom = 1, zoomOriginX = 0.5, zoomOriginY = 0.5;
   let mirrored = false, flipped = false, frozen = false;
   let recognizer = null, sessionStartTime = null;
   let transcriptLog = [];
+  let pendingAiLines = [];
+  let aiBatchTimer = null;
   let currentDevices = [];
   let displayRafId = null, recordRafId = null, overheadRafId = null;
   let thumbnailBase64 = null;
-  const seenTools = new Set(), seenItems = new Set();
+
+  const toolRegistry = new Map();
+  const itemRegistry = new Map();
+  const techRegistry = new Map();
 
   const mainVideo = document.getElementById('video');
   const overheadVideo = document.getElementById('overheadVideo');
@@ -256,6 +269,7 @@
   const titleInput = document.getElementById('titleInput');
   const domainSelect = document.getElementById('domainSelect');
   const focusLabel = document.getElementById('focusLabel');
+  const aiStatus = document.getElementById('aiStatus');
   const secTitleTools = document.getElementById('secTitleTools');
   const secTitleItems = document.getElementById('secTitleItems');
   const cameraSelect = document.getElementById('cameraSelect');
@@ -273,8 +287,10 @@
   const modeText = document.getElementById('modeText');
   const recordToggle = document.getElementById('recordToggle');
   const transcribeToggle = document.getElementById('transcribeToggle');
+  const aiToggle = document.getElementById('aiToggle');
   const recordWrap = document.getElementById('recordWrap');
   const transcribeWrap = document.getElementById('transcribeWrap');
+  const aiWrap = document.getElementById('aiWrap');
   const toolList = document.getElementById('toolList');
   const measureList = document.getElementById('measureList');
   const techList = document.getElementById('techList');
@@ -289,6 +305,7 @@
     const parts = [];
     if (recordingEnabled) parts.push('Recording');
     if (transcriptionEnabled) parts.push('Transcribing');
+    if (transcriptionEnabled && aiClassifyEnabled) parts.push('AI');
     modeText.textContent = parts.length > 0 ? parts.join(' + ') : 'Display only';
   }
 
@@ -328,16 +345,40 @@
     return `${hh}:${mm}:${ss}`;
   }
 
-  function addChip(container, text, cssClass, seenSet) {
-    const norm = text.toLowerCase().trim();
-    if (seenSet && seenSet.has(norm)) return;
-    if (seenSet) seenSet.add(norm);
-    if (container.querySelector('.empty')) container.innerHTML = '';
+  function createChipElement(text, cssClass) {
     const chip = document.createElement('div');
     chip.className = 'chip ' + cssClass;
-    chip.innerHTML = `<span>${text}</span><span class="time">${elapsedTimeStr()}</span>`;
-    container.appendChild(chip);
-    container.scrollTop = container.scrollHeight;
+    const span = document.createElement('span');
+    span.textContent = text;
+    const time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = elapsedTimeStr();
+    chip.appendChild(span);
+    chip.appendChild(time);
+    return chip;
+  }
+
+  function flashPulse(el, aiSourced) {
+    el.classList.add(aiSourced ? 'ai-pulse' : 'pulse');
+    setTimeout(() => el.classList.remove(aiSourced ? 'ai-pulse' : 'pulse'), 600);
+  }
+
+  function upsertChip(registry, key, container, phrase, cssClass, aiSourced) {
+    const normKey = key.toLowerCase().trim();
+    if (registry.has(normKey)) {
+      const entry = registry.get(normKey);
+      const betterText = phrase.length >= entry.text.length ? phrase : entry.text;
+      entry.text = betterText;
+      entry.el.querySelector('span').textContent = betterText;
+      entry.el.querySelector('.time').textContent = elapsedTimeStr();
+      flashPulse(entry.el, aiSourced);
+    } else {
+      if (container.querySelector('.empty')) container.innerHTML = '';
+      const el = createChipElement(phrase, cssClass);
+      container.appendChild(el);
+      registry.set(normKey, { text: phrase, el: el });
+      flashPulse(el, aiSourced);
+    }
   }
 
   function findDictMatch(textLower, dictArray) {
@@ -360,12 +401,15 @@
     return matches;
   }
 
-  function extractCategories(text) {
+  // Instant local first-pass — fast but limited to known phrases.
+  function extractCategoriesLocal(text) {
     const lower = text.toLowerCase();
     const dict = DICTS[currentDomain] || DICTS.cooking;
 
     const matchedTool = findDictMatch(lower, dict.tools);
-    if (matchedTool) addChip(toolList, matchedTool, 'tool', seenTools);
+    if (matchedTool) {
+      upsertChip(toolRegistry, matchedTool, toolList, matchedTool, 'tool', false);
+    }
 
     const matchedMaterial = findDictMatch(lower, dict.materials);
     const measureMatches = text.match(MEASUREMENT_REGEX);
@@ -389,11 +433,62 @@
           fullPhrase = matchedMaterial;
         }
       }
-      if (fullPhrase) addChip(measureList, fullPhrase, 'measure', seenItems);
+      upsertChip(itemRegistry, matchedMaterial, measureList, fullPhrase, 'measure', false);
     } else if (measureMatches) {
-      measureMatches.forEach(m => addChip(measureList, m.trim(), 'measure', seenItems));
+      measureMatches.forEach(m => {
+        const clean = m.trim();
+        upsertChip(itemRegistry, clean, measureList, clean, 'measure', false);
+      });
     }
   }
+
+  // ---------- AI Classify (Gemini, server-side via Apps Script) ----------
+  function queueForAiClassification(entry) {
+    if (!aiClassifyEnabled) return;
+    pendingAiLines.push(entry);
+  }
+
+  async function runAiClassificationBatch() {
+    if (!aiClassifyEnabled || pendingAiLines.length === 0 || !APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PASTE_YOUR') !== -1) return;
+    const batch = pendingAiLines;
+    pendingAiLines = [];
+    aiStatus.style.display = 'flex';
+    try {
+      const resp = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'classifyTranscript', lines: batch, domain: currentDomain })
+      });
+      const result = await resp.json();
+      if (result.success) {
+        (result.tools || []).forEach(t => upsertChip(toolRegistry, t, toolList, t, 'tool', true));
+        (result.ingredients || []).forEach(i => upsertChip(itemRegistry, i, measureList, i, 'measure', true));
+        (result.techniques || []).forEach(t => upsertChip(techRegistry, t, techList, t, 'tech', true));
+      } else {
+        console.log('AI classify skipped:', result.message);
+      }
+    } catch (err) {
+      console.log('AI classify request failed:', err.message);
+    } finally {
+      aiStatus.style.display = 'none';
+    }
+  }
+
+  function startAiBatchTimer() {
+    if (aiBatchTimer) return;
+    aiBatchTimer = setInterval(runAiClassificationBatch, AI_BATCH_INTERVAL_MS);
+  }
+  function stopAiBatchTimer() {
+    if (aiBatchTimer) { clearInterval(aiBatchTimer); aiBatchTimer = null; }
+    pendingAiLines = [];
+    aiStatus.style.display = 'none';
+  }
+
+  aiToggle.addEventListener('change', () => {
+    aiClassifyEnabled = aiToggle.checked;
+    aiWrap.classList.toggle('on', aiClassifyEnabled);
+    if (aiClassifyEnabled) startAiBatchTimer(); else stopAiBatchTimer();
+    updateModeText();
+  });
 
   function resizeCanvases() {
     const rect = mainCol.getBoundingClientRect();
@@ -510,8 +605,10 @@
     if (transcriptionEnabled) {
       if (!recognizer) initSpeech();
       else { try { recognizer.start(); } catch (e) {} }
+      if (aiClassifyEnabled) startAiBatchTimer();
     } else {
       if (recognizer) { try { recognizer.stop(); } catch (e) {} }
+      stopAiBatchTimer();
     }
     updateModeText();
   });
@@ -535,6 +632,7 @@
     }
     if (recordingEnabled && !mediaRecorder) startRecorder();
     if (transcriptionEnabled && !recognizer) initSpeech();
+    if (transcriptionEnabled && aiClassifyEnabled) startAiBatchTimer();
     updateModeText();
   }
 
@@ -646,9 +744,13 @@
         if (result.isFinal && text.length > 0) {
           const type = classify(text);
           const time = elapsedTimeStr();
-          transcriptLog.push({ time, type, text });
-          extractCategories(text);
-          if (type === 'TECHNIQUE') addChip(techList, text, 'tech', null);
+          const entry = { time, type, text };
+          transcriptLog.push(entry);
+          extractCategoriesLocal(text);
+          queueForAiClassification(entry);
+          if (type === 'TECHNIQUE') {
+            upsertChip(techRegistry, text, techList, text, 'tech', false);
+          }
         }
       }
     };
@@ -689,6 +791,8 @@
     exportLinks.innerHTML = '';
 
     if (recognizer) { try { recognizer.stop(); } catch (e) {} }
+    if (pendingAiLines.length > 0) { await runAiClassificationBatch(); }
+    stopAiBatchTimer();
 
     try {
       const snapshotSource = (mediaRecorder && mediaRecorder.state === 'recording') ? recordCanvas : displayCanvas;
