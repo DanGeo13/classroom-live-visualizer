@@ -1,20 +1,27 @@
 /**
- * Classroom Live Visualizer - Backend API (v5)
+ * Classroom Live Visualizer - Backend API (v6)
  * Deploy as a Web App (Execute as: Me, Access: Anyone).
  *
- * v5 change: classifyWithGemini_ is now STATEFUL. Each call receives the
- * CURRENT authoritative lists (tools/ingredients/techniques) plus only the
- * newest transcript lines, and Gemini returns the full corrected lists —
- * refining quantities in place ("300g" -> "500g of sifted flour" becomes
- * ONE updated entry, not two) and removing items explicitly cancelled
- * ("don't worry about the sifted flour" removes it from the list).
+ * v6 change: PERSISTENT MEMORY via a linked Google Sheet. Previously the
+ * "current state" (tools/ingredients/techniques) lived only in the
+ * browser tab's JavaScript memory and vanished on refresh. Now it lives
+ * in a dedicated Sheet — created automatically on first run — which
+ * Gemini reads from and writes back to on every classification cycle.
+ * This also means the state genuinely persists if the page reloads
+ * mid-demo, and multiple devices talking to the same backend would share it.
  *
  * SETUP REQUIRED: Script Properties > GEMINI_API_KEY (see earlier setup).
  * IMPORTANT: create a NEW deployment version after editing this file.
+ *
+ * On first run, this script creates a Spreadsheet named
+ * "Classroom Live Visualizer - State" in your Drive and remembers its ID
+ * in Script Properties (STATE_SPREADSHEET_ID) for reuse on every call.
  */
 
 const FOLDER_NAME = "Classroom Demonstrations";
 const GEMINI_MODEL = "gemini-2.5-flash-lite";
+const STATE_SHEET_NAME = "Live_Classification_State";
+const STATE_SPREADSHEET_NAME = "Classroom Live Visualizer - State";
 
 function doGet() {
   return ContentService.createTextOutput(
@@ -40,7 +47,9 @@ function doPost(e) {
         payload.thumbnailBase64
       );
     } else if (action === "classifyTranscript") {
-      responseObj = classifyWithGemini_(payload.lines, payload.domain, payload.currentState);
+      responseObj = classifyWithGemini_(payload.lines, payload.domain);
+    } else if (action === "resetSessionState") {
+      responseObj = resetStateSheet_();
     } else {
       responseObj = { success: false, message: "Unknown action: " + action };
     }
@@ -52,29 +61,103 @@ function doPost(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// ---------- Persistent state storage (Google Sheet) ----------
+
+function getStateSpreadsheet_() {
+  const props = PropertiesService.getScriptProperties();
+  let ssId = props.getProperty('STATE_SPREADSHEET_ID');
+  let ss = null;
+  if (ssId) {
+    try { ss = SpreadsheetApp.openById(ssId); } catch (e) { ss = null; }
+  }
+  if (!ss) {
+    ss = SpreadsheetApp.create(STATE_SPREADSHEET_NAME);
+    props.setProperty('STATE_SPREADSHEET_ID', ss.getId());
+  }
+  return ss;
+}
+
+function getOrCreateStateSheet_() {
+  const ss = getStateSpreadsheet_();
+  let sheet = ss.getSheetByName(STATE_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(STATE_SHEET_NAME);
+    sheet.appendRow(["Category", "Item"]);
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 120);
+    sheet.setColumnWidth(2, 420);
+  }
+  const defaultSheet = ss.getSheetByName("Sheet1");
+  if (defaultSheet && ss.getSheets().length > 1 && defaultSheet.getLastRow() === 0) {
+    ss.deleteSheet(defaultSheet);
+  }
+  return sheet;
+}
+
+function readStateFromSheet_() {
+  const sheet = getOrCreateStateSheet_();
+  const lastRow = sheet.getLastRow();
+  const state = { tools: [], ingredients: [], techniques: [] };
+  if (lastRow < 2) return state;
+  const data = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  data.forEach(function(row) {
+    const category = String(row[0]).toLowerCase().trim();
+    const item = String(row[1]).trim();
+    if (!item) return;
+    if (category === 'tool') state.tools.push(item);
+    else if (category === 'ingredient') state.ingredients.push(item);
+    else if (category === 'technique') state.techniques.push(item);
+  });
+  return state;
+}
+
+function writeStateToSheet_(state) {
+  const sheet = getOrCreateStateSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, 2).clearContent();
+  }
+  const rows = [];
+  (state.tools || []).forEach(function(t) { rows.push(["tool", t]); });
+  (state.ingredients || []).forEach(function(i) { rows.push(["ingredient", i]); });
+  (state.techniques || []).forEach(function(t) { rows.push(["technique", t]); });
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, 2).setValues(rows);
+  }
+}
+
 /**
- * Stateful reconciliation: sends Gemini the CURRENT tracked lists plus the
- * newest transcript lines, and asks for the FULL corrected lists back —
- * refining, replacing, or removing entries as the transcript dictates,
- * rather than blindly appending.
- * Returns: { success, tools: [...], ingredients: [...], techniques: [...] }
+ * Clears the tracked state — call this at the start of a fresh session so
+ * a new class doesn't inherit tools/ingredients left over from the last one.
  */
-function classifyWithGemini_(lines, domain, currentState) {
+function resetStateSheet_() {
+  const sheet = getOrCreateStateSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) sheet.getRange(2, 1, lastRow - 1, 2).clearContent();
+  return { success: true, message: "Session state cleared." };
+}
+
+// ---------- Gemini classification, backed by the persistent sheet ----------
+
+/**
+ * Reads current state from the Sheet, asks Gemini to reconcile it against
+ * the newest transcript lines (refine in place / remove on cancellation /
+ * add new / merge paraphrases), writes the corrected result back to the
+ * Sheet, and returns it to the caller.
+ */
+function classifyWithGemini_(lines, domain) {
   try {
     const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
     if (!apiKey) {
       return { success: false, message: "GEMINI_API_KEY is not set in Script Properties." };
     }
+
+    const state = readStateFromSheet_();
+
     if (!lines || lines.length === 0) {
-      return {
-        success: true,
-        tools: (currentState && currentState.tools) || [],
-        ingredients: (currentState && currentState.ingredients) || [],
-        techniques: (currentState && currentState.techniques) || []
-      };
+      return { success: true, tools: state.tools, ingredients: state.ingredients, techniques: state.techniques };
     }
 
-    const state = currentState || { tools: [], ingredients: [], techniques: [] };
     const transcriptText = lines.map(function(l) {
       return `[${l.time}] ${l.text}`;
     }).join('\n');
@@ -83,10 +166,10 @@ function classifyWithGemini_(lines, domain, currentState) {
 
     const prompt =
       "You are maintaining a live, continuously corrected classroom worksheet for a " + domainLabel + " demonstration.\n\n" +
-      "CURRENT STATE (the ground truth tracked so far):\n" +
-      "TOOLS: " + JSON.stringify(state.tools || []) + "\n" +
-      "INGREDIENTS: " + JSON.stringify(state.ingredients || []) + "\n" +
-      "TECHNIQUES: " + JSON.stringify(state.techniques || []) + "\n\n" +
+      "CURRENT STATE (the ground truth tracked so far, stored persistently):\n" +
+      "TOOLS: " + JSON.stringify(state.tools) + "\n" +
+      "INGREDIENTS: " + JSON.stringify(state.ingredients) + "\n" +
+      "TECHNIQUES: " + JSON.stringify(state.techniques) + "\n\n" +
       "NEW TRANSCRIPT LINES spoken since the last update:\n" + transcriptText + "\n\n" +
       "Update the three lists according to these rules:\n" +
       "1. REFINE IN PLACE: if a new line corrects or adds detail to an item already tracked " +
@@ -134,12 +217,15 @@ function classifyWithGemini_(lines, domain, currentState) {
     rawText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
 
     const parsed = JSON.parse(rawText);
-    return {
-      success: true,
+    const newState = {
       tools: parsed.tools || [],
       ingredients: parsed.ingredients || [],
       techniques: parsed.techniques || []
     };
+
+    writeStateToSheet_(newState);
+
+    return { success: true, tools: newState.tools, ingredients: newState.ingredients, techniques: newState.techniques };
 
   } catch (err) {
     return { success: false, message: "Gemini classification failed: " + err.message };

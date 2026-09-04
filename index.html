@@ -32,6 +32,7 @@
     button#finishBtn { background:var(--tech-color); color:#fff; font-weight:600; }
     button#finishBtn:hover { background:#ff8787; }
     button#overheadBtn.active { background:#ffb84d; color:#211200; border-color:#ffb84d; }
+    button#newSessionBtn { background:#2a2a33; }
     #titleInput { width:180px; }
     #overheadSelect { display:none; }
 
@@ -125,6 +126,7 @@
       <button id="flipBtn" title="Flip upside down (F)">Flip 180° ↕</button>
       <button id="freezeBtn" title="Freeze (Space)">Freeze ❄</button>
       <button id="resetZoomBtn" title="Reset zoom">Reset Zoom</button>
+      <button id="newSessionBtn" title="Clear persisted tools/ingredients/techniques for a fresh class">New Session</button>
       <button id="finishBtn">Finish &amp; Save Demo</button>
     </div>
   </div>
@@ -209,6 +211,8 @@
   // =====================================================================
   // CONFIG — paste your deployed Apps Script Web App /exec URL below.
   // AI Classify requires GEMINI_API_KEY set in Apps Script Script Properties.
+  // Persistent memory now lives server-side in a Google Sheet — the
+  // client no longer tracks or sends "current state" itself.
   // =====================================================================
   const APPS_SCRIPT_URL = "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE";
   const AI_BATCH_INTERVAL_MS = 12000;
@@ -248,12 +252,6 @@
   let displayRafId = null, recordRafId = null, overheadRafId = null;
   let thumbnailBase64 = null;
 
-  // AI-authoritative state: the reconciled ground truth from the last
-  // successful Gemini batch. Local dictionary matches provide instant
-  // interim feedback but get fully superseded by this on each AI cycle,
-  // so refinements/removals apply correctly instead of stacking up.
-  let aiState = { tools: [], ingredients: [], techniques: [] };
-
   const toolRegistry = new Map();
   const itemRegistry = new Map();
   const techRegistry = new Map();
@@ -285,6 +283,7 @@
   const flipBtn = document.getElementById('flipBtn');
   const freezeBtn = document.getElementById('freezeBtn');
   const resetZoomBtn = document.getElementById('resetZoomBtn');
+  const newSessionBtn = document.getElementById('newSessionBtn');
   const finishBtn = document.getElementById('finishBtn');
   const freezeOverlay = document.getElementById('freeze-overlay');
   const zoomIndicator = document.getElementById('zoom-indicator');
@@ -387,9 +386,9 @@
     }
   }
 
-  // Fully replaces a panel's contents from the AI-authoritative list —
-  // this is what makes refinements and removals actually take effect
-  // instead of stacking as separate entries.
+  // Fully replaces a panel's contents from the server's authoritative
+  // (Sheet-backed) list — this is what makes refinements and removals
+  // actually take effect instead of stacking as separate entries.
   function rebuildListFromAiState(container, registry, items, cssClass) {
     container.innerHTML = '';
     registry.clear();
@@ -426,7 +425,7 @@
   }
 
   // Instant local first-pass — fast but no memory of corrections; gets
-  // superseded by the next authoritative AI rebuild every ~12s.
+  // superseded by the next authoritative rebuild from the server every ~12s.
   function extractCategoriesLocal(text) {
     const lower = text.toLowerCase();
     const dict = DICTS[currentDomain] || DICTS.cooking;
@@ -467,7 +466,7 @@
     }
   }
 
-  // ---------- AI Classify (Gemini, server-side via Apps Script, stateful) ----------
+  // ---------- AI Classify (Gemini + Sheet-backed persistent state) ----------
   function queueForAiClassification(entry) {
     if (!aiClassifyEnabled) return;
     pendingAiLines.push(entry);
@@ -481,18 +480,13 @@
     try {
       const resp = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
-        body: JSON.stringify({ action: 'classifyTranscript', lines: batch, domain: currentDomain, currentState: aiState })
+        body: JSON.stringify({ action: 'classifyTranscript', lines: batch, domain: currentDomain })
       });
       const result = await resp.json();
       if (result.success) {
-        aiState = {
-          tools: result.tools || [],
-          ingredients: result.ingredients || [],
-          techniques: result.techniques || []
-        };
-        rebuildListFromAiState(toolList, toolRegistry, aiState.tools, 'tool');
-        rebuildListFromAiState(measureList, itemRegistry, aiState.ingredients, 'measure');
-        rebuildListFromAiState(techList, techRegistry, aiState.techniques, 'tech');
+        rebuildListFromAiState(toolList, toolRegistry, result.tools || [], 'tool');
+        rebuildListFromAiState(measureList, itemRegistry, result.ingredients || [], 'measure');
+        rebuildListFromAiState(techList, techRegistry, result.techniques || [], 'tech');
       } else {
         console.log('AI classify skipped:', result.message);
       }
@@ -500,6 +494,28 @@
       console.log('AI classify request failed:', err.message);
     } finally {
       aiStatus.style.display = 'none';
+    }
+  }
+
+  // Fetches whatever is already persisted in the Sheet (no Gemini call
+  // needed server-side when lines is empty) so the panels reflect prior
+  // state immediately on page load, rather than staying blank until the
+  // first spoken line triggers a batch.
+  async function hydrateFromPersistedState() {
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PASTE_YOUR') !== -1) return;
+    try {
+      const resp = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'classifyTranscript', lines: [], domain: currentDomain })
+      });
+      const result = await resp.json();
+      if (result.success) {
+        rebuildListFromAiState(toolList, toolRegistry, result.tools || [], 'tool');
+        rebuildListFromAiState(measureList, itemRegistry, result.ingredients || [], 'measure');
+        rebuildListFromAiState(techList, techRegistry, result.techniques || [], 'tech');
+      }
+    } catch (err) {
+      console.log('Hydrate from persisted state failed:', err.message);
     }
   }
 
@@ -512,6 +528,29 @@
     pendingAiLines = [];
     aiStatus.style.display = 'none';
   }
+
+  // Clears the persisted Sheet state — call at the start of a fresh class
+  // so leftover tools/ingredients from a previous session don't carry over.
+  async function resetPersistedState() {
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PASTE_YOUR') !== -1) return;
+    try {
+      await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'resetSessionState' })
+      });
+      rebuildListFromAiState(toolList, toolRegistry, [], 'tool');
+      rebuildListFromAiState(measureList, itemRegistry, [], 'measure');
+      rebuildListFromAiState(techList, techRegistry, [], 'tech');
+    } catch (err) {
+      console.log('Reset session state failed:', err.message);
+    }
+  }
+
+  newSessionBtn.addEventListener('click', () => {
+    if (confirm('Start a new session? This clears the persisted Tools/Ingredients/Techniques memory (kept in your Google Sheet) for a fresh class.')) {
+      resetPersistedState();
+    }
+  });
 
   aiToggle.addEventListener('change', () => {
     aiClassifyEnabled = aiToggle.checked;
@@ -876,6 +915,7 @@
       resizeCanvases();
       await initMainMedia(null);
       await enumerateCameras();
+      await hydrateFromPersistedState();
       updateModeText();
     } catch (err) {
       console.log('Camera/mic access error:', err.message);
