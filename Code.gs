@@ -1,21 +1,18 @@
 /**
- * Classroom Live Visualizer - Backend API (v6)
+ * Classroom Live Visualizer - Backend API (v7)
  * Deploy as a Web App (Execute as: Me, Access: Anyone).
  *
- * v6 change: PERSISTENT MEMORY via a linked Google Sheet. Previously the
- * "current state" (tools/ingredients/techniques) lived only in the
- * browser tab's JavaScript memory and vanished on refresh. Now it lives
- * in a dedicated Sheet — created automatically on first run — which
- * Gemini reads from and writes back to on every classification cycle.
- * This also means the state genuinely persists if the page reloads
- * mid-demo, and multiple devices talking to the same backend would share it.
+ * Changes in v7:
+ * 1. Strict attribution: Measurements/quantities and prep techniques MUST be
+ *    combined directly into the ingredient/material entry (e.g. "500 grams of sifted flour").
+ *    Isolated standalone units (e.g. "300 grams", "500 grams") are forbidden from the ingredients list.
+ * 2. Deduplication & refinement: Every ingredient entry has one primary noun key.
+ *    Any new quantity or modification replaces the earlier entry completely.
+ * 3. Structured success criteria & doc export: Attributes measurements and techniques
+ *    strictly against the relevant item/action.
  *
- * SETUP REQUIRED: Script Properties > GEMINI_API_KEY (see earlier setup).
- * IMPORTANT: create a NEW deployment version after editing this file.
- *
- * On first run, this script creates a Spreadsheet named
- * "Classroom Live Visualizer - State" in your Drive and remembers its ID
- * in Script Properties (STATE_SPREADSHEET_ID) for reuse on every call.
+ * SETUP REQUIRED: Script Properties > GEMINI_API_KEY
+ * IMPORTANT: Create a NEW deployment version after updating.
  */
 
 const FOLDER_NAME = "Classroom Demonstrations";
@@ -126,10 +123,6 @@ function writeStateToSheet_(state) {
   }
 }
 
-/**
- * Clears the tracked state — call this at the start of a fresh session so
- * a new class doesn't inherit tools/ingredients left over from the last one.
- */
 function resetStateSheet_() {
   const sheet = getOrCreateStateSheet_();
   const lastRow = sheet.getLastRow();
@@ -137,14 +130,8 @@ function resetStateSheet_() {
   return { success: true, message: "Session state cleared." };
 }
 
-// ---------- Gemini classification, backed by the persistent sheet ----------
+// ---------- Gemini classification, backed by persistent sheet ----------
 
-/**
- * Reads current state from the Sheet, asks Gemini to reconcile it against
- * the newest transcript lines (refine in place / remove on cancellation /
- * add new / merge paraphrases), writes the corrected result back to the
- * Sheet, and returns it to the caller.
- */
 function classifyWithGemini_(lines, domain) {
   try {
     const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
@@ -165,33 +152,26 @@ function classifyWithGemini_(lines, domain) {
     const domainLabel = domain || "general practical demonstration";
 
     const prompt =
-      "You are maintaining a live, continuously corrected classroom worksheet for a " + domainLabel + " demonstration.\n\n" +
-      "CURRENT STATE (the ground truth tracked so far, stored persistently):\n" +
+      "You are an expert instructional assistant maintaining a live, continuously corrected classroom demonstration list for " + domainLabel + ".\n\n" +
+      "CURRENT STATE (ground truth in Google Sheet):\n" +
       "TOOLS: " + JSON.stringify(state.tools) + "\n" +
-      "INGREDIENTS: " + JSON.stringify(state.ingredients) + "\n" +
+      "INGREDIENTS/MATERIALS: " + JSON.stringify(state.ingredients) + "\n" +
       "TECHNIQUES: " + JSON.stringify(state.techniques) + "\n\n" +
-      "NEW TRANSCRIPT LINES spoken since the last update:\n" + transcriptText + "\n\n" +
-      "Update the three lists according to these rules:\n" +
-      "1. REFINE IN PLACE: if a new line corrects or adds detail to an item already tracked " +
-      "(e.g. \"actually make that 500 grams\" after \"300 grams of sifted flour\" was already tracked), " +
-      "REPLACE that existing entry with the corrected version. Never keep both the old and new version, " +
-      "and never add it again as a separate entry.\n" +
-      "2. REMOVE ON CANCELLATION: if a new line explicitly cancels, negates, or says an item is no longer " +
-      "needed (e.g. \"don't worry about the sifted flour\", \"we don't need the drill anymore\", \"scratch that\"), " +
-      "REMOVE that item entirely from its list.\n" +
-      "3. ADD NEW: if a new line introduces a genuinely new tool, ingredient, or technique not already tracked, add it. " +
-      "Recognize tools/ingredients even if described in everyday words rather than technical names " +
-      "(e.g. \"large metal bowl\" is a valid tool entry).\n" +
-      "4. PRESERVE: leave every other existing entry unchanged if the new lines don't affect it.\n" +
-      "5. MERGE: if a new line paraphrases something already tracked, merge into the single existing entry rather than duplicating.\n\n" +
-      "Respond with ONLY valid minified JSON — the COMPLETE corrected lists (not a diff, not just the changes), " +
-      "in exactly this shape, no markdown, no explanation:\n" +
+      "NEW SPOKEN TRANSCRIPT LINES:\n" + transcriptText + "\n\n" +
+      "CRITICAL EXTRACTION & DEDUPLICATION RULES:\n" +
+      "1. ATTRIBUTE MEASUREMENTS DIRECTLY: Never output an isolated measurement or quantity (e.g. NEVER output '300 grams', '500 grams', '10 mm', '2 cups' alone in ingredients). Every measurement MUST be directly combined with its target ingredient/material (e.g. '500 grams of sifted flour', '1200mm dressed pine').\n" +
+      "2. ATTRIBUTE PREPARATION TECHNIQUES: Prep descriptors belong attached to the ingredient (e.g. 'roughly chopped', 'sifted', 'diced', 'planed'). Example: '2 x roughly chopped tomatoes'.\n" +
+      "3. REFINE AND REPLACE IN PLACE: When a speaker corrects, refines, or repeats an item with new measurements (e.g., '300 grams of flour... actually make that 500 grams of sifted flour'), REPLACE the previous entry completely. The list must contain exactly ONE entry for that ingredient showing the most updated, complete state ('500 grams of sifted flour'). NEVER duplicate ingredients.\n" +
+      "4. REMOVAL ON CANCELLATION: If the speaker cancels or says not to use an item (e.g. 'actually don't worry about the sifted flour', 'scratch the pine', 'we don't need the whisk'), REMOVE that item completely from the list.\n" +
+      "5. STANDALONE TECHNIQUES: The 'techniques' list is strictly for overarching procedural methods, physical handling, or safety rules (e.g. 'hold blade at 45 degree angle', 'keep fingers tucked in claw grip', 'ensure glue cures under clamp pressure'). Do not put basic ingredient prep in techniques if it is already attributed to the ingredient.\n" +
+      "6. MERGE SYNONYMS: Combine natural variations (e.g. 'large metal bowl', 'mixing bowl', 'steel bowl') into a single appropriate tool entry.\n\n" +
+      "Output ONLY valid minified JSON with the COMPLETE authoritative lists (no markdown fences, no formatting):\n" +
       "{\"tools\":[\"...\"],\"ingredients\":[\"...\"],\"techniques\":[\"...\"]}";
 
     const url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + apiKey;
     const requestPayload = {
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.15, maxOutputTokens: 768 }
+      generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
     };
 
     const resp = UrlFetchApp.fetch(url, {
@@ -217,9 +197,13 @@ function classifyWithGemini_(lines, domain) {
     rawText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
 
     const parsed = JSON.parse(rawText);
+
+    const isolatedMeasureRegex = /^\s*(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|ml|mL|l|L|litres?|cups?|tbsp|tsp|teaspoons?|tablespoons?|degrees?|°[CF]?|mm|cm|m|metres?|inches?|pinch|dash|handful)\s*$/i;
+    const cleanIngredients = (parsed.ingredients || []).filter(item => !isolatedMeasureRegex.test(item.trim()));
+
     const newState = {
       tools: parsed.tools || [],
-      ingredients: parsed.ingredients || [],
+      ingredients: cleanIngredients,
       techniques: parsed.techniques || []
     };
 
@@ -272,11 +256,11 @@ function buildSuccessCriteria_(sections) {
   const criteria = [];
   sections.steps.forEach(function(step) {
     const text = step.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, '');
-    criteria.push(`Student completes the step: "${text}"`);
+    criteria.push(`Student accurately executes the procedure: "${text}"`);
   });
   sections.techniques.forEach(function(tech) {
     const text = tech.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, '');
-    criteria.push(`Student correctly demonstrates the technique/safety cue: "${text}"`);
+    criteria.push(`Student correctly demonstrates required technique/safety cue: "${text}"`);
   });
   return criteria;
 }
@@ -321,6 +305,7 @@ function saveDemonstrationPackage(base64Video, transcriptLog, meta, sessionTitle
 
     const sections = buildStructuredSections_(transcriptLog);
     const successCriteria = buildSuccessCriteria_(sections);
+    const state = readStateFromSheet_();
 
     const durationSeconds = Math.round(meta.durationSeconds || 0);
     const durMin = Math.floor(durationSeconds / 60);
@@ -358,6 +343,24 @@ function saveDemonstrationPackage(base64Video, transcriptLog, meta, sessionTitle
       body.appendParagraph("Recorded Video: none (this session ran without recording).").setItalic(true);
     }
 
+    body.appendParagraph("Required Ingredients & Materials").setHeading(DocumentApp.ParagraphHeading.HEADING1);
+    if (state.ingredients && state.ingredients.length > 0) {
+      state.ingredients.forEach(function(ing) {
+        body.appendListItem(ing).setGlyphType(DocumentApp.GlyphType.BULLET);
+      });
+    } else {
+      body.appendParagraph("No ingredients or materials recorded.").setItalic(true);
+    }
+
+    body.appendParagraph("Tools & Equipment Used").setHeading(DocumentApp.ParagraphHeading.HEADING1);
+    if (state.tools && state.tools.length > 0) {
+      state.tools.forEach(function(tool) {
+        body.appendListItem(tool).setGlyphType(DocumentApp.GlyphType.BULLET);
+      });
+    } else {
+      body.appendParagraph("No tools or equipment recorded.").setItalic(true);
+    }
+
     body.appendParagraph("Structured Procedural Steps").setHeading(DocumentApp.ParagraphHeading.HEADING1);
     if (sections.steps.length > 0) {
       sections.steps.forEach(function(step) {
@@ -378,7 +381,7 @@ function saveDemonstrationPackage(base64Video, transcriptLog, meta, sessionTitle
       body.appendParagraph("No technique or safety cues were detected during this session.").setItalic(true);
     }
 
-    body.appendParagraph("Success Criteria").setHeading(DocumentApp.ParagraphHeading.HEADING1);
+    body.appendParagraph("Success Criteria (Rubric Checkpoints)").setHeading(DocumentApp.ParagraphHeading.HEADING1);
     if (successCriteria.length > 0) {
       successCriteria.forEach(function(c) {
         const li = body.appendListItem(c);

@@ -207,7 +207,7 @@
 
 <script>
 (function() {
-  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwjmCvuK_hfWTRjSK80Af9nWx26yKDt91xw3IWV4Bc2dF2P4wExpMszgjSlOmoYO80zew/exec";
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx6HKxglQ1Lfk0qGryPEXwrfv3JlWj5UvCGdEh4nDPFrUxV5KtjuDFPhdSAmQSgHJqA1g/exec";
   const AI_BATCH_INTERVAL_MS = 10000;
 
   const DICTS = {
@@ -360,7 +360,6 @@
     setTimeout(() => el.classList.remove(aiSourced ? 'ai-pulse' : 'pulse'), 600);
   }
 
-  // Local interim helper: replaces the chip text on update, never adds duplicate entries
   function upsertChip(registry, key, container, phrase, cssClass, aiSourced) {
     const normKey = key.toLowerCase().trim();
     if (registry.has(normKey)) {
@@ -413,7 +412,7 @@
     return matches;
   }
 
-  // Local interim matching: NEVER outputs isolated measurements alone
+  // Local interim matching: Never emits isolated measurements
   function extractCategoriesLocal(text) {
     const lower = text.toLowerCase();
     const dict = DICTS[currentDomain] || DICTS.cooking;
@@ -445,15 +444,25 @@
           fullPhrase = matchedMaterial;
         }
       }
-      // Replaces/refines the entry for this exact ingredient in place
       upsertChip(itemRegistry, matchedMaterial, measureList, fullPhrase, 'measure', false);
     }
-    // Standalone measurements without matched ingredient are deliberately NOT added locally
   }
 
   function queueForAiClassification(entry) {
     if (!aiClassifyEnabled) return;
     pendingAiLines.push(entry);
+  }
+
+  async function postApi(payload) {
+    const resp = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'cors',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return await resp.json();
   }
 
   async function runAiClassificationBatch() {
@@ -462,11 +471,7 @@
     pendingAiLines = [];
     aiStatus.style.display = 'flex';
     try {
-      const resp = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'classifyTranscript', lines: batch, domain: currentDomain })
-      });
-      const result = await resp.json();
+      const result = await postApi({ action: 'classifyTranscript', lines: batch, domain: currentDomain });
       if (result.success) {
         rebuildListFromAiState(toolList, toolRegistry, result.tools || [], 'tool');
         rebuildListFromAiState(measureList, itemRegistry, result.ingredients || [], 'measure');
@@ -484,11 +489,7 @@
   async function hydrateFromPersistedState() {
     if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PASTE_YOUR') !== -1) return;
     try {
-      const resp = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'classifyTranscript', lines: [], domain: currentDomain })
-      });
-      const result = await resp.json();
+      const result = await postApi({ action: 'classifyTranscript', lines: [], domain: currentDomain });
       if (result.success) {
         rebuildListFromAiState(toolList, toolRegistry, result.tools || [], 'tool');
         rebuildListFromAiState(measureList, itemRegistry, result.ingredients || [], 'measure');
@@ -512,10 +513,7 @@
   async function resetPersistedState() {
     if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PASTE_YOUR') !== -1) return;
     try {
-      await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'resetSessionState' })
-      });
+      await postApi({ action: 'resetSessionState' });
       rebuildListFromAiState(toolList, toolRegistry, [], 'tool');
       rebuildListFromAiState(measureList, itemRegistry, [], 'measure');
       rebuildListFromAiState(techList, techRegistry, [], 'tech');
@@ -808,19 +806,14 @@
   async function uploadPayload(base64Video, durationSeconds, sessionTitle, mimeType) {
     exportStatus.textContent = 'Uploading to Google Drive…';
     try {
-      const resp = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'saveDemonstrationPackage',
-          base64Video: base64Video,
-          transcriptLog: transcriptLog,
-          sessionTitle: sessionTitle,
-          thumbnailBase64: thumbnailBase64,
-          meta: { durationSeconds: durationSeconds, mimeType: mimeType || 'none' }
-        })
+      const result = await postApi({
+        action: 'saveDemonstrationPackage',
+        base64Video: base64Video,
+        transcriptLog: transcriptLog,
+        sessionTitle: sessionTitle,
+        thumbnailBase64: thumbnailBase64,
+        meta: { durationSeconds: durationSeconds, mimeType: mimeType || 'none' }
       });
-      if (!resp.ok) throw new Error('Server responded with status ' + resp.status);
-      const result = await resp.json();
       onSaveSuccess(result);
     } catch (err) {
       onSaveFailure(err);
