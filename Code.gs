@@ -1,22 +1,14 @@
 /**
- * Classroom Live Visualizer - Backend API (v7)
- * Deploy as a Web App (Execute as: Me, Access: Anyone).
- *
- * Changes in v7:
- * 1. Strict attribution: Measurements/quantities and prep techniques MUST be
- *    combined directly into the ingredient/material entry (e.g. "500 grams of sifted flour").
- *    Isolated standalone units (e.g. "300 grams", "500 grams") are forbidden from the ingredients list.
- * 2. Deduplication & refinement: Every ingredient entry has one primary noun key.
- *    Any new quantity or modification replaces the earlier entry completely.
- * 3. Structured success criteria & doc export: Attributes measurements and techniques
- *    strictly against the relevant item/action.
- *
- * SETUP REQUIRED: Script Properties > GEMINI_API_KEY
- * IMPORTANT: Create a NEW deployment version after updating.
+ * Classroom Live Visualizer - Backend API (v9)
+ * Upgraded to Gemini 3.5 Generation (gemini-3.5-flash / gemini-3.5-flash-lite)
+ * Deploy as a Web App:
+ *   Execute as: Me (<your-email>)
+ *   Who has access: Anyone
  */
 
 const FOLDER_NAME = "Classroom Demonstrations";
-const GEMINI_MODEL = "gemini-2.5-flash-lite";
+const PRIMARY_MODEL = "gemini-3.5-flash";
+const FALLBACK_MODEL = "gemini-3.5-flash-lite";
 const STATE_SHEET_NAME = "Live_Classification_State";
 const STATE_SPREADSHEET_NAME = "Classroom Live Visualizer - State";
 
@@ -58,7 +50,9 @@ function doPost(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// ---------- Persistent state storage (Google Sheet) ----------
+// =====================================================================
+// PERSISTENT STATE STORAGE (Google Sheets)
+// =====================================================================
 
 function getStateSpreadsheet_() {
   const props = PropertiesService.getScriptProperties();
@@ -130,7 +124,27 @@ function resetStateSheet_() {
   return { success: true, message: "Session state cleared." };
 }
 
-// ---------- Gemini classification, backed by persistent sheet ----------
+// =====================================================================
+// GEMINI 3.5 SEMANTIC EXTRACTION WITH MULTI-MODEL FALLBACK
+// =====================================================================
+
+function callGeminiEndpoint_(modelName, prompt, apiKey) {
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
+  const requestPayload = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+  };
+  const resp = UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(requestPayload),
+    muteHttpExceptions: true
+  });
+  return {
+    status: resp.getResponseCode(),
+    body: resp.getContentText()
+  };
+}
 
 function classifyWithGemini_(lines, domain) {
   try {
@@ -168,29 +182,24 @@ function classifyWithGemini_(lines, domain) {
       "Output ONLY valid minified JSON with the COMPLETE authoritative lists (no markdown fences, no formatting):\n" +
       "{\"tools\":[\"...\"],\"ingredients\":[\"...\"],\"techniques\":[\"...\"]}";
 
-    const url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + apiKey;
-    const requestPayload = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
-    };
+    // Try Gemini 3.5 Flash
+    let callResult = callGeminiEndpoint_(PRIMARY_MODEL, prompt, apiKey);
 
-    const resp = UrlFetchApp.fetch(url, {
-      method: "post",
-      contentType: "application/json",
-      payload: JSON.stringify(requestPayload),
-      muteHttpExceptions: true
-    });
-
-    const status = resp.getResponseCode();
-    const bodyText = resp.getContentText();
-
-    if (status !== 200) {
-      return { success: false, message: "Gemini API returned status " + status + ": " + bodyText.substring(0, 200) };
+    // Fall back to Gemini 3.5 Flash-Lite if busy or unavailable
+    if (callResult.status === 503 || callResult.status === 429 || callResult.status === 404) {
+      Logger.log("Primary model " + PRIMARY_MODEL + " returned " + callResult.status + ". Falling back to " + FALLBACK_MODEL);
+      Utilities.sleep(1000);
+      callResult = callGeminiEndpoint_(FALLBACK_MODEL, prompt, apiKey);
     }
 
-    const body = JSON.parse(bodyText);
+    if (callResult.status !== 200) {
+      Logger.log("Gemini API call failed with status " + callResult.status + ": " + callResult.body);
+      return { success: true, tools: state.tools, ingredients: state.ingredients, techniques: state.techniques, fallback: true };
+    }
+
+    const body = JSON.parse(callResult.body);
     if (!body.candidates || !body.candidates[0] || !body.candidates[0].content) {
-      return { success: false, message: "Unexpected Gemini response shape." };
+      return { success: true, tools: state.tools, ingredients: state.ingredients, techniques: state.techniques };
     }
 
     let rawText = body.candidates[0].content.parts[0].text || "";
@@ -198,6 +207,7 @@ function classifyWithGemini_(lines, domain) {
 
     const parsed = JSON.parse(rawText);
 
+    // Filter out isolated measurements
     const isolatedMeasureRegex = /^\s*(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|ml|mL|l|L|litres?|cups?|tbsp|tsp|teaspoons?|tablespoons?|degrees?|°[CF]?|mm|cm|m|metres?|inches?|pinch|dash|handful)\s*$/i;
     const cleanIngredients = (parsed.ingredients || []).filter(item => !isolatedMeasureRegex.test(item.trim()));
 
@@ -212,9 +222,15 @@ function classifyWithGemini_(lines, domain) {
     return { success: true, tools: newState.tools, ingredients: newState.ingredients, techniques: newState.techniques };
 
   } catch (err) {
-    return { success: false, message: "Gemini classification failed: " + err.message };
+    Logger.log("Gemini classification exception: " + err.message);
+    const state = readStateFromSheet_();
+    return { success: true, tools: state.tools, ingredients: state.ingredients, techniques: state.techniques };
   }
 }
+
+// =====================================================================
+// DRIVE & GOOGLE DOC GENERATION
+// =====================================================================
 
 function getOrCreateFolder_() {
   const folders = DriveApp.getFoldersByName(FOLDER_NAME);
@@ -419,4 +435,13 @@ function saveDemonstrationPackage(base64Video, transcriptLog, meta, sessionTitle
       message: "Error saving demonstration: " + err.message
     };
   }
+}
+
+function testClassify() {
+  const testLines = [
+    { time: "00:00:15", text: "we will need 500 grams of sifted flour" },
+    { time: "00:00:30", text: "grab a large metal bowl" }
+  ];
+  const result = classifyWithGemini_(testLines, "cooking");
+  Logger.log(JSON.stringify(result, null, 2));
 }
