@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
   <title>Classroom Live Visualizer</title>
   <style>
     :root {
@@ -455,8 +456,8 @@
 </script>
 
 <script>
-  // Paste your Apps Script Web App URL below
-  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzykAYH6T23ACX2YfT6N-AyDIdG81qXpO60HeTOirIerlVU4IsmZms0WakBzM7rG4h3rw/exec";
+  // Updated Deployment URL
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyYeGyzS1xgqtwEVDSFschn5f94l5OoeearDXgY9u_ccfGclh0f7K1EamSmBhVV6fUXhQ/exec";
   const AI_BATCH_INTERVAL_MS = 10000;
 
   const DICTS = {
@@ -482,6 +483,7 @@
   let pendingAiLines = [];
   let aiBatchTimer = null;
   let isAiBatchRunning = false;
+  let speechErrorCooldown = false;
   let displayRafId = null, recordRafId = null, overheadRafId = null;
   let thumbnailBase64 = null;
 
@@ -656,7 +658,6 @@
     return matches;
   }
 
-  // Real-time client-side matching (strictly combines quantities)
   function extractCategoriesLocal(text) {
     const lower = text.toLowerCase();
     const dict = DICTS[currentDomain] || DICTS.cooking;
@@ -1067,12 +1068,18 @@
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
+    if (recognizer) {
+      try { recognizer.abort(); } catch (e) {}
+      recognizer = null;
+    }
+
     recognizer = new SpeechRecognition();
     recognizer.continuous = true;
     recognizer.interimResults = true;
     recognizer.lang = 'en-AU';
 
     recognizer.onresult = (event) => {
+      speechErrorCooldown = false;
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         const text = result[0].transcript.trim();
@@ -1086,14 +1093,37 @@
       }
     };
 
-    recognizer.onerror = (e) => console.warn("Speech API:", e.error);
-    recognizer.onend = () => {
-      if (mainStream && transcriptionEnabled) {
-        setTimeout(() => { try { recognizer.start(); } catch (err) {} }, 400);
+    recognizer.onerror = (e) => {
+      console.warn("Speech API error:", e.error);
+      if (e.error === 'audio-capture' || e.error === 'not-allowed') {
+        speechErrorCooldown = true;
       }
     };
 
-    try { recognizer.start(); } catch (e) {}
+    recognizer.onend = () => {
+      if (speechErrorCooldown) {
+        setTimeout(() => {
+          speechErrorCooldown = false;
+          if (mainStream && transcriptionEnabled) {
+            try { recognizer.start(); } catch (err) {}
+          }
+        }, 3000);
+        return;
+      }
+
+      if (mainStream && transcriptionEnabled) {
+        setTimeout(() => {
+          try { recognizer.start(); } catch (err) {}
+        }, 500);
+      }
+    };
+
+    // Stagger SpeechRecognition startup to allow getUserMedia to claim hardware
+    setTimeout(() => {
+      try { recognizer.start(); } catch (e) {
+        console.warn("SpeechRecognition start delay error:", e.message);
+      }
+    }, 600);
   }
 
   async function uploadPayload(base64Video, durationSeconds, sessionTitle, mimeType) {
