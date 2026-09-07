@@ -179,7 +179,7 @@
       </div>
       <div id="sidepanel">
         <div class="panel-section">
-          <h3><span class="pdot" style="background:var(--tool)"></span><span id="secTitleTools">Tools &amp; Equipment</span></h3>
+          <h3><span class="pdot" style="background:var(--tool)"></span><span id="secTitleTools">Kitchen Tools</span></h3>
           <div id="toolList"><div class="empty">None detected yet…</div></div>
         </div>
         <div class="panel-section">
@@ -245,19 +245,13 @@
     textiles: JSON.parse(document.getElementById('dict-textiles').textContent)
   };
 
-  const MEASUREMENT_REGEX = /\b(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|milligrams?|ml|mL|l|L|litres?|liters?|cups?|tbsp|tsp|teaspoons?|tablespoons?|dsp|dessertspoons?|degrees?|°[CF]?|celsius|fahrenheit|mm|millimetres?|cm|centimetres?|m|metres?|meters?|inches?|inch|"|feet|ft|gsm|minutes?|mins?|seconds?|secs?|hours?|hrs?|pinch(?:es)?|dash(?:es)?|drop(?:s)?|glug(?:s)?|handful(?:s)?|cloves?|bunches?|sprigs?|sticks?|heads?|slices?|pieces?|wedges?|sheets?|knobs?)\b/gi;
+  const MEASUREMENT_REGEX = /(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|milligrams?|ml|mL|l|L|litres?|liters?|cups?|tbsp|tsp|teaspoons?|tablespoons?|dsp|dessertspoons?|degrees?|°[CF]?|celsius|fahrenheit|mm|millimetres?|cm|centimetres?|m|metres?|meters?|inches?|inch|"|feet|ft|gsm|minutes?|mins?|seconds?|secs?|hours?|hrs?|pinch(?:es)?|dash(?:es)?|drop(?:s)?|glug(?:s)?|handful(?:s)?|cloves?|bunches?|sprigs?|sticks?|heads?|slices?|pieces?|wedges?|sheets?|knobs?)\b/gi;
   const COUNT_PREFIX_REGEX = /^(?:(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?|(?:a\s+|one\s+|two\s+|three\s+|four\s+|five\s+|six\s+|seven\s+|eight\s+|nine\s+|ten\s+|half\s+a\s+|a\s+quarter\s+of\s+a\s+|a\s+pair\s+of\s+|a\s+dozen\s+|a\s+handful\s+of\s+|a\s+pinch\s+of\s+|a\s+dash\s+of\s+|a\s+glug\s+of\s+|a\s+clove\s+of\s+|a\s+head\s+of\s+|a\s+sprig\s+of\s+|a\s+stick\s+of\s+|a\s+piece\s+of\s+|a\s+slice\s+of\s+))/i;
 
-  const STEP_PATTERNS = [
-    /^\s*first\b/i, /^\s*next\b/i, /^\s*then\b/i, /^\s*after that\b/i,
-    /^\s*now we\b/i, /^\s*step\s*\d+/i, /^\s*finally\b/i, /^\s*once .*then\b/i,
-    /^\s*let'?s (start|begin|move on)/i
-  ];
   const TECHNIQUE_PATTERNS = [
-    /technique\s*:/i, /make sure to/i, /notice how/i, /hold the blade/i,
-    /ensure the temperature/i, /be careful/i, /safety (tip|first)/i,
-    /the key (is|here)/i, /important to/i, /watch (out|your)/i, /never/i, /always/i,
-    /remember to/i, /keep your fingers/i, /apply even pressure/i
+    /claw grip/i, /technique/i, /make sure/i, /notice how/i, /hold the/i,
+    /ensure the/i, /be careful/i, /safety/i, /the key is/i, /important to/i,
+    /watch your/i, /never/i, /always/i, /remember to/i, /keep your/i, /clean/i
   ];
 
   let currentDomain = 'cooking';
@@ -356,12 +350,6 @@
     focusLabel.textContent = val.length > 0 ? val : 'Untitled';
   });
 
-  function classify(text) {
-    for (const p of STEP_PATTERNS) if (p.test(text)) return "STEP";
-    for (const p of TECHNIQUE_PATTERNS) if (p.test(text)) return "TECHNIQUE";
-    return "SPEECH";
-  }
-
   function elapsedTimeStr() {
     if (!sessionStartTime) return "00:00:00";
     const s = Math.floor((Date.now() - sessionStartTime) / 1000);
@@ -441,6 +429,7 @@
     return matches;
   }
 
+  // Robust parsing: Catches plain ingredients immediately without needing measurements
   function extractCategoriesLocal(text) {
     const lower = text.toLowerCase();
     const dict = DICTS[currentDomain] || DICTS.cooking;
@@ -474,6 +463,14 @@
       }
       upsertChip(itemRegistry, matchedMaterial, measureList, fullPhrase, 'measure', false);
     }
+
+    // Capture Technique/Safety locally
+    for (const pattern of TECHNIQUE_PATTERNS) {
+      if (pattern.test(lower)) {
+        upsertChip(techRegistry, text, techList, text, 'tech', false);
+        break;
+      }
+    }
   }
 
   function queueForAiClassification(entry) {
@@ -495,7 +492,7 @@
 
   async function runAiClassificationBatch() {
     if (!aiClassifyEnabled || pendingAiLines.length === 0 || !APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PASTE_YOUR') !== -1) return;
-    const batch = pendingAiLines;
+    const batch = [...pendingAiLines];
     pendingAiLines = [];
     aiStatus.style.display = 'flex';
     try {
@@ -506,7 +503,7 @@
         rebuildListFromAiState(techList, techRegistry, result.techniques || [], 'tech');
       }
     } catch (err) {
-      console.warn('AI batch skipped/failed:', err.message);
+      console.warn('AI classify failed:', err.message);
     } finally {
       aiStatus.style.display = 'none';
     }
@@ -818,25 +815,28 @@
         const result = event.results[i];
         const text = result[0].transcript.trim();
         if (result.isFinal && text.length > 0) {
-          const type = classify(text);
           const time = elapsedTimeStr();
-          const entry = { time, type, text };
+          const entry = { time, text };
           transcriptLog.push(entry);
           extractCategoriesLocal(text);
           queueForAiClassification(entry);
         }
       }
     };
+
     recognizer.onerror = (e) => {
-      if (e.error === 'audio-capture' || e.error === 'not-allowed') {
-        try { recognizer.abort(); } catch (err) {}
-      }
+      if (e.error === 'no-speech') return;
+      console.warn('Speech recognition warning:', e.error);
     };
+
     recognizer.onend = () => {
       if (mainStream && transcriptionEnabled) {
-        setTimeout(() => { try { recognizer.start(); } catch (err) {} }, 400);
+        setTimeout(() => { 
+          try { recognizer.start(); } catch (err) {} 
+        }, 300);
       }
     };
+
     try { recognizer.start(); } catch (e) {}
   }
 
