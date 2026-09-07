@@ -2,135 +2,355 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Classroom Live Visualizer</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📹</text></svg>">
   <style>
     :root {
-      --bg:#0a0a0c; --panel:#15151a; --accent:#3ddc97; --tech-color:#ff6b6b;
-      --tool:#5aa9ff; --measure:#ffb84d; --text:#f2f2f5; --muted:#8a8a94; --ai:#c792ea;
+      --bg: #0a0a0c;
+      --panel: #15151a;
+      --accent: #3ddc97;
+      --tech-color: #ff6b6b;
+      --tool: #5aa9ff;
+      --measure: #ffb84d;
+      --text: #f2f2f5;
+      --muted: #8a8a94;
+      --ai: #c792ea;
     }
     * { box-sizing: border-box; }
     html, body {
-      margin: 0; padding: 0; background: var(--bg); color: var(--text);
-      font-family: 'Segoe UI', Roboto, -apple-system, sans-serif; height: 100%; overflow: hidden;
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      height: 100%;
+      overflow: hidden;
     }
-    #app { display: flex; flex-direction: column; height: 100vh; }
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
     #topbar {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 18px; background: var(--panel); border-bottom: 1px solid #232329;
-      z-index: 20; flex-wrap: wrap; gap: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 18px;
+      background: var(--panel);
+      border-bottom: 1px solid #232329;
+      z-index: 20;
+      flex-wrap: wrap;
+      gap: 8px;
     }
-    #topbar h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: 0.5px; display: flex; align-items: center; }
+    #topbar h1 {
+      font-size: 16px;
+      margin: 0;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+    }
     #status-dot {
-      width: 10px; height: 10px; border-radius: 50%; background: #444;
-      display: inline-block; margin-right: 8px; transition: background 0.3s;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #444;
+      display: inline-block;
+      margin-right: 8px;
+      transition: background 0.3s;
     }
-    #status-dot.live { background: #ff4757; box-shadow: 0 0 8px #ff4757; animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
-
-    #controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-    button, select, input[type=text] {
-      background: #1f1f26; color: var(--text); border: 1px solid #33333c;
-      padding: 7px 11px; border-radius: 6px; font-size: 13px; outline: none;
+    #status-dot.live {
+      background: #ff4757;
+      box-shadow: 0 0 8px #ff4757;
+      animation: pulse 1.5s infinite;
     }
-    button { cursor: pointer; transition: background 0.2s; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    #controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    button, select, input[type="text"] {
+      background: #1f1f26;
+      color: var(--text);
+      border: 1px solid #33333c;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    button {
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
     button:hover { background: #2a2a33; }
-    button.active { background: var(--accent); color: #05130c; border-color: var(--accent); }
-    button#finishBtn { background: var(--tech-color); color: #fff; font-weight: 600; }
-    button#finishBtn:hover { background: #ff8787; }
-    button#overheadBtn.active { background: var(--measure); color: #211200; border-color: var(--measure); }
-    #titleInput { width: 170px; }
-    #overheadSelect { display: none; }
-
-    .toggle-wrap {
-      display: flex; align-items: center; gap: 6px; background: #1f1f26;
-      border: 1px solid #33333c; border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer;
+    button.active {
+      background: var(--accent);
+      color: #05130c;
+      border-color: var(--accent);
     }
+    button#finishBtn {
+      background: var(--tech-color);
+      color: #fff;
+      font-weight: 600;
+      border-color: var(--tech-color);
+    }
+    button#finishBtn:hover { background: #ff8787; }
+    button#overheadBtn.active {
+      background: #ffb84d;
+      color: #211200;
+      border-color: #ffb84d;
+    }
+    button#newSessionBtn { background: #2a2a33; }
+    #titleInput { width: 190px; }
+    #overheadSelect { display: none; }
+    .toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #1f1f26;
+      border: 1px solid #33333c;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle-wrap input { cursor: pointer; }
     .toggle-wrap.on { border-color: var(--accent); }
     #aiWrap.on { border-color: var(--ai); }
-
-    #layout { flex: 1; display: flex; overflow: hidden; }
-    #mainCol {
-      position: relative; flex: 1; overflow: hidden; background: #000;
-      display: flex; align-items: center; justify-content: center;
+    #layout {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
     }
-    #stageCanvas { width: 100%; height: 100%; background: #000; }
-    #video, #overheadVideo { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-
+    #mainCol {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #stageCanvas {
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+    video, #overheadVideo {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
     #rightCol {
-      width: 320px; flex-shrink: 0; display: flex; flex-direction: column;
-      background: var(--panel); border-left: 1px solid #232329;
+      width: 320px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+      border-left: 1px solid #232329;
     }
     #focusHeader {
-      padding: 12px 14px 8px; font-size: 12px; color: var(--muted); border-bottom: 1px solid #1f1f26;
-      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 14px 6px;
+      font-size: 13px;
+      color: var(--muted);
+      border-bottom: 1px solid #1f1f26;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
-    #focusHeader b { color: var(--text); font-size: 13px; }
-    #aiStatus { font-size: 11px; color: var(--ai); display: none; align-items: center; gap: 5px; }
-    #aiStatus .aidot { width: 6px; height: 6px; border-radius: 50%; background: var(--ai); animation: pulse 1.2s infinite; }
-
+    #focusHeader b { color: var(--text); }
+    #aiStatus {
+      font-size: 11px;
+      color: var(--ai);
+      display: none;
+      align-items: center;
+      gap: 4px;
+    }
+    #aiStatus .aidot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ai);
+      animation: pulse 1.2s infinite;
+    }
     #sidepanel {
-      flex: 1; min-height: 0; padding: 12px 14px; overflow-y: auto;
-      display: flex; flex-direction: column; gap: 14px;
+      flex: 1;
+      min-height: 0;
+      padding: 12px 14px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
     }
     .panel-section h3 {
-      font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted);
-      margin: 0 0 8px 0; display: flex; align-items: center; gap: 6px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--muted);
+      margin: 0 0 8px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
-    .pdot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+    .pdot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
     .chip {
-      display: flex; justify-content: space-between; align-items: center;
-      background: #1f1f26; border-radius: 6px; padding: 6px 10px; margin-bottom: 6px;
-      font-size: 13px; transition: background 0.4s ease;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #1f1f26;
+      border-radius: 6px;
+      padding: 6px 10px;
+      margin-bottom: 6px;
+      font-size: 13px;
+      transition: background 0.4s ease;
     }
     .chip.pulse { background: #2a3f36; }
     .chip.ai-pulse { background: #2e2540; }
-    .chip .time { color: var(--muted); font-size: 11px; margin-left: 8px; white-space: nowrap; }
+    .chip .time {
+      color: var(--muted);
+      font-size: 11px;
+      margin-left: 8px;
+      white-space: nowrap;
+    }
     .tool { border-left: 3px solid var(--tool); }
     .measure { border-left: 3px solid var(--measure); }
     .tech { border-left: 3px solid var(--tech-color); }
-    .empty { color: var(--muted); font-size: 12px; font-style: italic; }
-
-    #overheadBox { display: none; flex-shrink: 0; border-top: 1px solid #232329; padding: 10px 14px 14px; }
-    #overheadBox h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--measure); margin: 0 0 8px 0; }
+    .empty {
+      color: var(--muted);
+      font-size: 12px;
+      font-style: italic;
+    }
+    #overheadBox {
+      display: none;
+      flex-shrink: 0;
+      border-top: 1px solid #232329;
+      padding: 10px 14px 14px;
+    }
+    #overheadBox h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #ffb84d;
+      margin: 0 0 8px 0;
+    }
     #overheadCanvas {
-      width: 100%; aspect-ratio: 16/9; background: #000;
-      border: 2px solid var(--measure); border-radius: 6px; display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border: 2px solid #ffb84d;
+      border-radius: 6px;
+      display: block;
     }
-
     #freeze-overlay {
-      position: absolute; top: 14px; left: 14px; background: rgba(255,107,107,0.9);
-      color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; display: none; z-index: 15;
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      background: rgba(255,107,107,0.9);
+      color: #fff;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      display: none;
+      z-index: 15;
     }
-    #zoom-indicator, #flip-indicator {
-      position: absolute; top: 14px; right: 14px; background: rgba(0,0,0,0.65);
-      color: var(--accent); padding: 6px 12px; border-radius: 20px; font-size: 12px; display: none; z-index: 15;
+    #zoom-indicator {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: rgba(0,0,0,0.6);
+      color: var(--accent);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      display: none;
+      z-index: 15;
     }
-    #flip-indicator { top: 50px; color: var(--tech-color); }
+    #flip-indicator {
+      position: absolute;
+      top: 50px;
+      right: 14px;
+      background: rgba(0,0,0,0.6);
+      color: var(--tech-color);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      display: none;
+      z-index: 15;
+    }
     #mode-indicator {
-      position: absolute; bottom: 14px; left: 14px; display: flex; align-items: center;
-      gap: 6px; background: rgba(0,0,0,0.65); padding: 6px 12px; border-radius: 20px;
-      font-size: 12px; color: var(--muted); z-index: 15;
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0,0,0,0.6);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      color: var(--muted);
+      z-index: 15;
     }
-    #mode-indicator .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
-
+    #mode-indicator .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.5s infinite;
+    }
     #export-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none;
-      align-items: center; justify-content: center; z-index: 100;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
     }
     #export-box {
-      background: var(--panel); padding: 30px 40px; border-radius: 12px; text-align: center;
-      min-width: 320px; border: 1px solid #2a2a33;
+      background: var(--panel);
+      padding: 30px 40px;
+      border-radius: 12px;
+      text-align: center;
+      min-width: 320px;
+      border: 1px solid #2a2a33;
     }
     #export-box h2 { margin-top: 0; font-size: 18px; }
-    #export-status { color: var(--muted); font-size: 14px; margin: 10px 0; }
+    #export-status {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 10px 0;
+    }
     .spinner {
-      width: 36px; height: 36px; border: 4px solid #2a2a33; border-top-color: var(--accent);
-      border-radius: 50%; animation: spin 0.9s linear infinite; margin: 12px auto;
+      width: 36px;
+      height: 36px;
+      border: 4px solid #2a2a33;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin: 12px auto;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #export-links a { color: var(--accent); display: block; margin-top: 8px; text-decoration: none; }
+    #export-links a {
+      color: var(--accent);
+      display: block;
+      margin-top: 8px;
+      text-decoration: none;
+      font-weight: 500;
+    }
     #export-links a:hover { text-decoration: underline; }
     #closeExport { margin-top: 16px; }
   </style>
@@ -140,24 +360,24 @@
   <div id="topbar">
     <h1><span id="status-dot"></span>Classroom Live Visualizer</h1>
     <div id="controls">
-      <input type="text" id="titleInput" placeholder="Session focus...">
-      <select id="domainSelect">
+      <input type="text" id="titleInput" placeholder="Demo title / focus skill">
+      <select id="domainSelect" title="Subject domain">
         <option value="cooking">Cooking</option>
         <option value="timber">Timber Technology</option>
-        <option value="textiles">Textiles &amp; Sewing</option>
+        <option value="textiles">Textiles & Sewing</option>
       </select>
       <label class="toggle-wrap on" id="recordWrap"><input type="checkbox" id="recordToggle" checked> Record</label>
       <label class="toggle-wrap on" id="transcribeWrap"><input type="checkbox" id="transcribeToggle" checked> Transcribe</label>
       <label class="toggle-wrap on" id="aiWrap"><input type="checkbox" id="aiToggle" checked> AI Classify</label>
-      <select id="cameraSelect" title="Main camera"></select>
-      <button id="overheadBtn" title="Overhead camera">Add Overhead Feed</button>
-      <select id="overheadSelect" title="Select overhead camera"></select>
-      <button id="mirrorBtn" title="Mirror (M)">Mirror ⇋</button>
-      <button id="flipBtn" title="Flip 180° (F)">Flip 180° ↕</button>
-      <button id="freezeBtn" title="Freeze (Space)">Freeze ❄</button>
-      <button id="resetZoomBtn">Reset Zoom</button>
-      <button id="newSessionBtn">New Session</button>
-      <button id="finishBtn">Finish &amp; Save Demo</button>
+      <select id="cameraSelect" title="Main Camera"></select>
+      <button id="overheadBtn" title="Toggle Overhead Camera">Add Overhead Feed</button>
+      <select id="overheadSelect" title="Select Overhead Camera"></select>
+      <button id="mirrorBtn" title="Mirror horizontally [M]">Mirror</button>
+      <button id="flipBtn" title="Flip 180 [F]">Flip 180</button>
+      <button id="freezeBtn" title="Freeze frame [Space]">Freeze</button>
+      <button id="resetZoomBtn" title="Reset Zoom">Reset Zoom</button>
+      <button id="newSessionBtn" title="Clear demonstration memory">New Session</button>
+      <button id="finishBtn">Finish & Save Demo</button>
     </div>
   </div>
 
@@ -166,32 +386,31 @@
       <video id="video" autoplay playsinline muted></video>
       <video id="overheadVideo" autoplay playsinline muted></video>
       <canvas id="stageCanvas"></canvas>
-      <div id="freeze-overlay">FROZEN — press Space to resume</div>
+      <div id="freeze-overlay">FROZEN (Space to resume)</div>
       <div id="zoom-indicator">Zoomed 2.5x</div>
       <div id="flip-indicator">Flipped 180°</div>
-      <div id="mode-indicator"><span class="dot"></span><span id="modeText">Recording + Transcribing</span></div>
+      <div id="mode-indicator"><span class="dot"></span><span id="modeText">Ready</span></div>
     </div>
 
     <div id="rightCol">
       <div id="focusHeader">
         <span>Focus: <b id="focusLabel">Untitled</b></span>
-        <span id="aiStatus"><span class="aidot"></span>AI refining…</span>
+        <span id="aiStatus"><span class="aidot"></span>AI refining</span>
       </div>
       <div id="sidepanel">
         <div class="panel-section">
           <h3><span class="pdot" style="background:var(--tool)"></span><span id="secTitleTools">Kitchen Tools</span></h3>
-          <div id="toolList"><div class="empty">None detected yet…</div></div>
+          <div id="toolList"><div class="empty">None detected yet</div></div>
         </div>
         <div class="panel-section">
-          <h3><span class="pdot" style="background:var(--measure)"></span><span id="secTitleItems">Ingredients &amp; Quantities</span></h3>
-          <div id="measureList"><div class="empty">None detected yet…</div></div>
+          <h3><span class="pdot" style="background:var(--measure)"></span><span id="secTitleItems">Ingredients & Quantities</span></h3>
+          <div id="measureList"><div class="empty">None detected yet</div></div>
         </div>
         <div class="panel-section">
-          <h3><span class="pdot" style="background:var(--tech-color)"></span>Techniques &amp; Safety</h3>
-          <div id="techList"><div class="empty">None detected yet…</div></div>
+          <h3><span class="pdot" style="background:var(--tech-color)"></span>Techniques & Safety</h3>
+          <div id="techList"><div class="empty">None detected yet</div></div>
         </div>
       </div>
-
       <div id="overheadBox">
         <h3>Overhead Feed</h3>
         <canvas id="overheadCanvas"></canvas>
@@ -204,39 +423,40 @@
   <div id="export-box">
     <h2>Saving Demonstration</h2>
     <div class="spinner" id="spinner"></div>
-    <div id="export-status">Preparing upload…</div>
+    <div id="export-status">Preparing upload...</div>
     <div id="export-links"></div>
-    <button id="closeExport" style="display:none;">Close</button>
+    <button id="closeExport" style="display:none">Close</button>
   </div>
 </div>
 
+<!-- Lexicon Dictionaries for Real-Time Offline Fallback -->
 <script id="dict-cooking" type="application/json">
 {
-  "tools": ["chef's knife","chefs knife","cook's knife","chopping knife","french knife","paring knife","peeling knife","bread knife","serrated knife","boning knife","filleting knife","carving knife","santoku knife","utility knife","cleaver","kitchen shears","kitchen scissors","mandoline","mandolin","peeler","vegetable peeler","y-peeler","zester","microplane","grater","box grater","cheese grater","cutting board","chopping board","pizza cutter","apple corer","melon baller","egg slicer","knife sharpener","sharpening steel","whetstone","mixing bowl","whisk","balloon whisk","wooden spoon","spatula","silicone spatula","turner","fish slice","egg flip","tongs","kitchen tongs","ladle","slotted spoon","sieve","strainer","sifter","flour sifter","colander","measuring cups","measuring cup","measuring jug","measuring spoons","measuring spoon","rolling pin","pastry brush","basting brush","pastry cutter","bench scraper","dough scraper","funnel","kitchen scale","digital scale","mortar and pestle","can opener","tin opener","bottle opener","corkscrew","garlic press","garlic crusher","potato masher","masher","juicer","citrus juicer","salad spinner","piping bag","piping nozzle","cooling rack","wire rack","timer","kitchen timer","meat thermometer","food thermometer","probe thermometer","candy thermometer","pastry blender","dough hook","spider skimmer","kitchen twine","meat mallet","saucepan","pot","frying pan","skillet","frypan","non-stick pan","wok","stockpot","griddle pan","casserole dish","dutch oven","roasting pan","baking tray","baking sheet","sheet pan","oven tray","baking dish","muffin tin","cake tin","cake pan","loaf tin","springform pan","pie dish","steamer basket","bamboo steamer","double boiler","bain marie","pressure cooker","ramekin","oven","stove","stovetop","cooktop","induction cooktop","microwave","blender","food processor","stand mixer","kitchenaid","hand mixer","electric beaters","immersion blender","stick blender","toaster","kettle","slow cooker","air fryer","rice cooker","deep fryer","sandwich press","jaffle iron","sous vide machine","vacuum sealer","cling wrap","aluminium foil","tin foil","baking paper","parchment paper","zip lock bag","oven mitt","apron","tea towel"],
-  "materials": ["dough","flour","plain flour","self-raising flour","wholemeal flour","bread flour","cornflour","cornstarch","water","sparkling water","onion","garlic","ginger","potato","sweet potato","carrot","celery","capsicum","bell pepper","tomato","cherry tomato","cucumber","zucchini","eggplant","pumpkin","broccoli","broccolini","cauliflower","cabbage","lettuce","spinach","kale","silverbeet","spring onion","shallot","leek","mushroom","sweetcorn","peas","green beans","asparagus","brussels sprouts","beetroot","radish","chilli","jalapeno","avocado","bok choy","fennel","rocket","arugula","apple","banana","orange","lemon","lime","strawberry","blueberry","raspberry","grape","watermelon","pineapple","mango","peach","plum","pear","kiwifruit","passionfruit","fig","apricot","cherry","dates","raisins","sultanas","coconut","beef","lamb","pork","chicken","turkey","duck","bacon","ham","sausage","mince","ground beef","steak","rump steak","sirloin","chicken breast","chicken thigh","pork chop","pork belly","lamb chop","lamb shank","beef brisket","salami","prosciutto","chorizo","fish","salmon","tuna","barramundi","snapper","cod","prawns","shrimp","crab","lobster","mussels","oysters","squid","calamari","octopus","scallops","milk","cream","thickened cream","sour cream","butter","unsalted butter","salted butter","margarine","cheese","cheddar","mozzarella","parmesan","feta","ricotta","haloumi","brie","cream cheese","yoghurt","ghee","egg","eggs","egg white","egg yolk","rice","basmati rice","jasmine rice","brown rice","arborio rice","pasta","spaghetti","penne","fettuccine","macaroni","lasagne sheets","gnocchi","noodles","bread","sourdough","breadcrumbs","panko breadcrumbs","oats","quinoa","couscous","pastry","puff pastry","shortcrust pastry","chickpeas","lentils","kidney beans","black beans","tofu","almonds","cashews","walnuts","peanuts","sesame seeds","chia seeds","pumpkin seeds","salt","sea salt","pepper","black pepper","white pepper","paprika","smoked paprika","cumin","coriander seed","turmeric","cinnamon","nutmeg","garlic powder","onion powder","basil","oregano","thyme","rosemary","parsley","mint","coriander","dill","bay leaf","chives","vanilla extract","curry powder","soy sauce","fish sauce","oyster sauce","tomato sauce","ketchup","mustard","dijon mustard","mayonnaise","aioli","vinegar","balsamic vinegar","white vinegar","apple cider vinegar","olive oil","extra virgin olive oil","vegetable oil","canola oil","sesame oil","honey","maple syrup","peanut butter","chilli sauce","sriracha","pesto","tomato paste","passata","stock","chicken stock","beef stock","vegetable stock","sugar","white sugar","caster sugar","brown sugar","icing sugar","raw sugar","baking powder","baking soda","bicarbonate of soda","yeast","cocoa powder","chocolate","dark chocolate","white chocolate","wine","red wine","white wine","juice","orange juice","lemon juice","lime juice"],
-  "descriptors": ["roughly chopped","finely chopped","diced","minced","sliced","thinly sliced","thick cut","crushed","peeled","grated","shredded","julienned","sifted","whisked","melted","softened","chilled","room temperature","cold","warm","hot","boiling","frozen","beaten","toasted","roasted","drained","rinsed","cooked","raw","fresh","dried","ground","cracked","whole","halved","quartered","seeded","de-seeded","trimmed","cubed","pureed"]
+  "tools": ["chef's knife","paring knife","bread knife","cutting board","mixing bowl","whisk","wooden spoon","spatula","tongs","ladle","sieve","measuring cups","measuring spoons","rolling pin","scale","saucepan","frying pan","skillet","wok","baking tray","oven","blender","food processor"],
+  "materials": ["onion","garlic","ginger","potato","carrot","celery","tomato","cucumber","zucchini","capsicum","spinach","mushroom","beef","chicken","pork","fish","salmon","prawns","egg","eggs","milk","butter","flour","plain flour","self-raising flour","sugar","salt","pepper","olive oil","water","yeast"],
+  "descriptors": ["roughly chopped","finely chopped","diced","minced","sliced","peeled","grated","sifted","whisked","melted","crushed","room temperature"]
 }
 </script>
 
 <script id="dict-timber" type="application/json">
 {
-  "tools": ["tape measure","steel rule","combination square","try square","speed square","sliding bevel","marking gauge","mortise gauge","marking knife","carpenter's pencil","chalk line","spirit level","laser level","compass","protractor","callipers","depth gauge","handsaw","hand saw","panel saw","rip saw","crosscut saw","tenon saw","back saw","dovetail saw","coping saw","fret saw","hacksaw","japanese pull saw","pull saw","ryoba saw","chisel","wood chisel","firmer chisel","mortise chisel","gouge","hand plane","bench plane","block plane","jack plane","smoothing plane","spokeshave","rasp","wood rasp","file","metal file","surform","utility knife","stanley knife","hand drill","brace and bit","bradawl","gimlet","auger bit","countersink","claw hammer","hammer","wooden mallet","mallet","nail punch","nail set","screwdriver","flathead screwdriver","phillips screwdriver","pincers","g-clamp","c-clamp","f-clamp","bar clamp","sash clamp","spring clamp","quick release clamp","bench vice","vice","workbench","sawhorse","sandpaper","sanding block","steel wool","cabinet scraper","putty knife","power drill","cordless drill","impact driver","hammer drill","circular saw","jigsaw","reciprocating saw","multi tool","router","plunge router","trim router","biscuit joiner","pocket hole jig","kreg jig","orbital sander","belt sander","detail sander","power planer","angle grinder","nail gun","brad nailer","heat gun","hot glue gun","table saw","bandsaw","mitre saw","chop saw","drop saw","drill press","wood lathe","lathe","thicknesser","jointer","surface planer","spindle moulder","router table","scroll saw","dust extractor","cnc router","laser cutter","disc sander","linisher","drill bit","forstner bit","hole saw","saw blade","router bit","push stick","featherboard"],
-  "materials": ["pine","radiata pine","douglas fir","cedar","western red cedar","cypress","hoop pine","blackwood","jarrah","tasmanian oak","victorian ash","spotted gum","blackbutt","messmate","red gum","ironbark","oak","american white oak","maple","walnut","mahogany","teak","beech","cherry","ash","birch","balsa","meranti","plywood","marine plywood","structural plywood","mdf","particleboard","chipboard","melamine board","formply","osb","hardboard","masonite","dowel rod","timber veneer","glulam","timber batten","dressed timber","rough sawn timber","dar timber","nail","bullet head nail","flat head nail","clout nail","panel pin","brad nail","screw","wood screw","chipboard screw","decking screw","batten screw","coach screw","drywall screw","bolt","coach bolt","carriage bolt","hex bolt","threaded rod","nut","hex nut","lock nut","washer","flat washer","dowel","fluted dowel","bracket","angle bracket","pocket screw","biscuit","butt hinge","piano hinge","concealed hinge","cabinet hinge","drawer slide","drawer runner","door catch","magnetic catch","shelf pin","cabinet handle","pva glue","yellow glue","wood glue","waterproof pva","hide glue","epoxy resin","two-part epoxy","polyurethane glue","gorilla glue","super glue","contact adhesive","liquid nails","wood filler","putty","sanding sealer","grain filler","wood stain","varnish","polyurethane varnish","lacquer","shellac","french polish","danish oil","tung oil","linseed oil","teak oil","hard wax oil","primer","undercoat","enamel paint","acrylic paint","decking oil","sandpaper","tack cloth"],
-  "descriptors": ["rough sawn","dressed all round","dar","kiln dried","air dried","seasoned","green","warped","cupped","bowed","twisted","sanded","dimensioned","squared","chamfered","rebated","routed","mitred","bevelled","drilled","countersunk","counterbored","plugged","dowelled","mortised","tenoned","dry fitted","glued","clamped","stained","sealed","varnished","waxed"]
+  "tools": ["tape measure","steel rule","try square","combination square","marking gauge","marking knife","pencil","handsaw","tenon saw","coping saw","chisel","bench plane","block plane","file","rasp","mallet","claw hammer","screwdriver","g-clamp","f-clamp","bar clamp","vice","cordless drill","drop saw","bandsaw","drill press","sandpaper"],
+  "materials": ["pine","radiata pine","oak","tasmanian oak","mdf","plywood","dowel","screw","wood screw","nail","pva glue","wood glue","epoxy","varnish","wood stain","danish oil","sandpaper"],
+  "descriptors": ["rough sawn","dressed all round","dar","squared","chamfered","rebated","routed","mitred","drilled","countersunk","sanded","glued","clamped"]
 }
 </script>
 
 <script id="dict-textiles" type="application/json">
 {
-  "tools": ["dressmaking shears","fabric scissors","sewing shears","pinking shears","embroidery scissors","snips","thread snips","paper scissors","rotary cutter","cutting mat","self-healing mat","seam ripper","stitch unpicker","unpicker","buttonhole cutter","pattern weights","craft knife","tape measure","measuring tape","sewing ruler","quilting ruler","french curve","hip curve","hem gauge","sewing gauge","tailor's chalk","tailors chalk","fabric marking pen","tracing wheel","carbon tracing paper","pattern master","protractor","seam gauge","hand sewing needle","sewing needle","embroidery needle","tapestry needle","beading needle","darning needle","needle threader","thimble","pincushion","pin cushion","dressmaker pins","straight pins","safety pins","bodkin","awl","iron","steam iron","ironing board","pressing cloth","tailor's ham","pressing ham","sleeve board","point presser","seam roll","spray bottle","wooden clapper","garment steamer","dress form","mannequin","loop turner","point turner","bias tape maker","wonder clips","hem clips","sewing clips","magnetic pin dish","walking foot","zipper foot","buttonhole foot","rolled hem foot","sewing machine","domestic sewing machine","overlocker","serger","coverstitch machine","embroidery machine","quilting machine","heat press","laser cutter","bobbin","bobbin case","presser foot","feed dogs","needle plate","tension dial","stitch length dial","hand wheel","foot pedal","thread guide","take-up lever","sewing machine needle","crochet hook","knitting needle","weaving loom","loom","shuttle"],
-  "materials": ["cotton","poplin","calico","muslin","cheesecloth","denim","chambray","canvas","drill","corduroy","linen","hemp","jute","bamboo fabric","wool","merino wool","lambswool","cashmere","alpaca","silk","felt","leather","suede","viscose","rayon","modal","tencel","bamboo viscose","acetate","polyester","nylon","acrylic","spandex","elastane","lycra","microfibre","neoprene","vinyl","flannel","chiffon","organza","satin","sateen","velvet","jersey","interlock","rib knit","french terry","fleece","ponte","tulle","netting","lace","interfacing","fusible interfacing","sew-in interfacing","wadding","batting","quilt batting","lining fabric","bias binding","bias tape","all-purpose thread","cotton thread","polyester thread","silk thread","embroidery thread","topstitching thread","elastic thread","button","shank button","snap fastener","press stud","hook and eye","hook and bar","zipper","invisible zip","metal zip","plastic zip","velcro","hook and loop tape","eyelets","grommets","d-rings","buckles","elastic","braided elastic","elastic cord","piping cord","piping","ribbon","satin ribbon","grosgrain ribbon","rickrack","lace trim","fringe trim","drawcord","yarn","wool yarn","cotton yarn","acrylic yarn"],
-  "descriptors": ["folded","cut on the fold","bias cut","straight grain","cross grain","pinned","basted","tacked","staystitched","interfaced","pressed open","pressed to one side","gathered","pleated","notched","clipped","graded","understitched","topstitched","edgestitched","hemmed","rolled","bound","ironed","steam pressed","reinforced"]
+  "tools": ["dressmaking shears","fabric scissors","snips","rotary cutter","cutting mat","seam ripper","tape measure","tailor's chalk","hand sewing needle","pins","iron","ironing board","tailor's ham","sewing machine","overlocker","bobbin","presser foot"],
+  "materials": ["cotton","calico","muslin","denim","linen","wool","felt","silk","polyester","interfacing","batting","thread","button","zipper","velcro","elastic","bias tape"],
+  "descriptors": ["folded","cut on fold","bias cut","pinned","basted","staystitched","interfaced","pressed open","gathered","hemmed","topstitched"]
 }
 </script>
 
 <script>
-(function() {
-  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwm_WKuPkjb2oRPqRIK6GqYDQ4A1n1kFmK4vv9sJe2hagdmBnr14K8bW4kcnSNdz7TX7Q/exec";
+  // Paste your Apps Script Web App URL below
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzykAYH6T23ACX2YfT6N-AyDIdG81qXpO60HeTOirIerlVU4IsmZms0WakBzM7rG4h3rw/exec";
   const AI_BATCH_INTERVAL_MS = 10000;
 
   const DICTS = {
@@ -245,16 +465,13 @@
     textiles: JSON.parse(document.getElementById('dict-textiles').textContent)
   };
 
-  const MEASUREMENT_REGEX = /(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|milligrams?|ml|mL|l|L|litres?|liters?|cups?|tbsp|tsp|teaspoons?|tablespoons?|dsp|dessertspoons?|degrees?|°[CF]?|celsius|fahrenheit|mm|millimetres?|cm|centimetres?|m|metres?|meters?|inches?|inch|"|feet|ft|gsm|minutes?|mins?|seconds?|secs?|hours?|hrs?|pinch(?:es)?|dash(?:es)?|drop(?:s)?|glug(?:s)?|handful(?:s)?|cloves?|bunches?|sprigs?|sticks?|heads?|slices?|pieces?|wedges?|sheets?|knobs?)\b/gi;
-  const COUNT_PREFIX_REGEX = /^(?:(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?|(?:a\s+|one\s+|two\s+|three\s+|four\s+|five\s+|six\s+|seven\s+|eight\s+|nine\s+|ten\s+|half\s+a\s+|a\s+quarter\s+of\s+a\s+|a\s+pair\s+of\s+|a\s+dozen\s+|a\s+handful\s+of\s+|a\s+pinch\s+of\s+|a\s+dash\s+of\s+|a\s+glug\s+of\s+|a\s+clove\s+of\s+|a\s+head\s+of\s+|a\s+sprig\s+of\s+|a\s+stick\s+of\s+|a\s+piece\s+of\s+|a\s+slice\s+of\s+))/i;
+  const MEASUREMENT_REGEX = /(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|ml|mL|l|L|litres?|cups?|tbsp|tsp|teaspoons?|tablespoons?|degrees?|°[CF]?|mm|cm|m|metres?|inches?|pinch|dash|handful)/gi;
+  const COUNT_PREFIX_REGEX = /^(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:a|one|two|three|four|five|six|seven|eight|nine|ten|half\s*a|a\s*pair\s*of|a\s*handful\s*of|a\s*pinch\s*of)/i;
 
-  const TECHNIQUE_PATTERNS = [
-    /claw grip/i, /technique/i, /make sure/i, /notice how/i, /hold the/i,
-    /ensure the/i, /be careful/i, /safety/i, /the key is/i, /important to/i,
-    /watch your/i, /never/i, /always/i, /remember to/i, /keep your/i, /clean/i
-  ];
+  const STEP_PATTERNS = [/\bfirst\b/i, /\bnext\b/i, /\bthen\b/i, /\bafter that\b/i, /\bnow we\b/i, /\bstep\b/i, /\bfinally\b/i, /\blet'?s (?:start|begin|move on)\b/i];
+  const TECHNIQUE_PATTERNS = [/\btechnique\b/i, /\bmake sure to\b/i, /\bnotice how\b/i, /\bhold the blade\b/i, /\bensure the temperature\b/i, /\bbe careful\b/i, /\bsafety tip\b/i, /\bkey is\b/i, /\bwatch your fingers\b/i, /\balways\b/i];
 
-  let currentDomain = 'cooking';
+  let currentDomain = "cooking";
   let mainStream = null, overheadStream = null, overheadActive = false;
   let mediaRecorder = null, recordedChunks = [];
   let recordingEnabled = true, transcriptionEnabled = true, aiClassifyEnabled = true;
@@ -264,7 +481,7 @@
   let transcriptLog = [];
   let pendingAiLines = [];
   let aiBatchTimer = null;
-  let currentDevices = [];
+  let isAiBatchRunning = false;
   let displayRafId = null, recordRafId = null, overheadRafId = null;
   let thumbnailBase64 = null;
 
@@ -282,7 +499,8 @@
 
   const recordCanvas = document.createElement('canvas');
   const recordCtx = recordCanvas.getContext('2d');
-  recordCanvas.width = 1920; recordCanvas.height = 1080;
+  recordCanvas.width = 1920;
+  recordCanvas.height = 1080;
 
   const statusDot = document.getElementById('status-dot');
   const titleInput = document.getElementById('titleInput');
@@ -301,16 +519,19 @@
   const resetZoomBtn = document.getElementById('resetZoomBtn');
   const newSessionBtn = document.getElementById('newSessionBtn');
   const finishBtn = document.getElementById('finishBtn');
+
   const freezeOverlay = document.getElementById('freeze-overlay');
   const zoomIndicator = document.getElementById('zoom-indicator');
   const flipIndicator = document.getElementById('flip-indicator');
   const modeText = document.getElementById('modeText');
+
   const recordToggle = document.getElementById('recordToggle');
   const transcribeToggle = document.getElementById('transcribeToggle');
   const aiToggle = document.getElementById('aiToggle');
   const recordWrap = document.getElementById('recordWrap');
   const transcribeWrap = document.getElementById('transcribeWrap');
   const aiWrap = document.getElementById('aiWrap');
+
   const toolList = document.getElementById('toolList');
   const measureList = document.getElementById('measureList');
   const techList = document.getElementById('techList');
@@ -323,32 +544,37 @@
 
   function updateModeText() {
     const parts = [];
-    if (recordingEnabled) parts.push('Recording');
-    if (transcriptionEnabled) parts.push('Transcribing');
-    if (transcriptionEnabled && aiClassifyEnabled) parts.push('AI');
-    modeText.textContent = parts.length > 0 ? parts.join(' + ') : 'Display only';
+    if (recordingEnabled) parts.push("Recording");
+    if (transcriptionEnabled) parts.push("Transcribing");
+    if (transcriptionEnabled && aiClassifyEnabled) parts.push("AI Active");
+    modeText.textContent = parts.length > 0 ? parts.join(" • ") : "Monitor Only";
   }
 
   function updateDomainLabels() {
     currentDomain = domainSelect.value;
-    if (currentDomain === 'cooking') {
-      secTitleTools.textContent = 'Kitchen Tools';
-      secTitleItems.textContent = 'Ingredients & Quantities';
-    } else if (currentDomain === 'timber') {
-      secTitleTools.textContent = 'Workshop Tools';
-      secTitleItems.textContent = 'Materials & Dimensions';
-    } else if (currentDomain === 'textiles') {
-      secTitleTools.textContent = 'Sewing & Textile Tools';
-      secTitleItems.textContent = 'Fabrics & Notions';
+    if (currentDomain === "cooking") {
+      secTitleTools.textContent = "Kitchen Tools";
+      secTitleItems.textContent = "Ingredients & Quantities";
+    } else if (currentDomain === "timber") {
+      secTitleTools.textContent = "Workshop Tools";
+      secTitleItems.textContent = "Materials & Dimensions";
+    } else if (currentDomain === "textiles") {
+      secTitleTools.textContent = "Sewing & Fabric Tools";
+      secTitleItems.textContent = "Fabrics & Notions";
     }
   }
   domainSelect.addEventListener('change', updateDomainLabels);
-  updateDomainLabels();
 
   titleInput.addEventListener('input', () => {
     const val = titleInput.value.trim();
-    focusLabel.textContent = val.length > 0 ? val : 'Untitled';
+    focusLabel.textContent = val.length > 0 ? val : "Untitled";
   });
+
+  function classifySpeech(text) {
+    for (const p of STEP_PATTERNS) if (p.test(text)) return "STEP";
+    for (const p of TECHNIQUE_PATTERNS) if (p.test(text)) return "TECHNIQUE";
+    return "SPEECH";
+  }
 
   function elapsedTimeStr() {
     if (!sessionStartTime) return "00:00:00";
@@ -373,8 +599,9 @@
   }
 
   function flashPulse(el, aiSourced) {
-    el.classList.add(aiSourced ? 'ai-pulse' : 'pulse');
-    setTimeout(() => el.classList.remove(aiSourced ? 'ai-pulse' : 'pulse'), 600);
+    const cls = aiSourced ? 'ai-pulse' : 'pulse';
+    el.classList.add(cls);
+    setTimeout(() => el.classList.remove(cls), 600);
   }
 
   function upsertChip(registry, key, container, phrase, cssClass, aiSourced) {
@@ -398,7 +625,7 @@
     container.innerHTML = '';
     registry.clear();
     if (!items || items.length === 0) {
-      container.innerHTML = '<div class="empty">None detected yet…</div>';
+      container.innerHTML = '<div class="empty">None detected yet</div>';
       return;
     }
     items.forEach(text => {
@@ -412,7 +639,7 @@
   function findDictMatch(textLower, dictArray) {
     let longest = null;
     dictArray.forEach(term => {
-      const re = new RegExp('\\b' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+      const re = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
       if (re.test(textLower)) {
         if (!longest || term.length > longest.length) longest = term;
       }
@@ -423,13 +650,13 @@
   function findDescriptors(textLower, descriptorsArray) {
     const matches = [];
     descriptorsArray.forEach(d => {
-      const re = new RegExp('\\b' + d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+      const re = new RegExp(`\\b${d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
       if (re.test(textLower)) matches.push(d);
     });
     return matches;
   }
 
-  // Robust parsing: Catches plain ingredients immediately without needing measurements
+  // Real-time client-side matching (strictly combines quantities)
   function extractCategoriesLocal(text) {
     const lower = text.toLowerCase();
     const dict = DICTS[currentDomain] || DICTS.cooking;
@@ -441,10 +668,10 @@
 
     const matchedMaterial = findDictMatch(lower, dict.materials);
     const measureMatches = text.match(MEASUREMENT_REGEX);
-    const descriptors = findDescriptors(lower, dict.descriptors || []);
+    const descriptors = findDescriptors(lower, dict.descriptors);
 
     if (matchedMaterial) {
-      let fullPhrase = '';
+      let fullPhrase = "";
       if (measureMatches && measureMatches.length > 0) {
         const qty = measureMatches[0].trim();
         const descStr = descriptors.length > 0 ? descriptors.join(' ') + ' ' : '';
@@ -454,7 +681,7 @@
         if (countMatch) {
           const countPrefix = countMatch[0].trim();
           const descStr = descriptors.length > 0 ? descriptors.join(' ') + ' ' : '';
-          fullPhrase = `${countPrefix} ${descStr}${matchedMaterial}`.replace(/\s+/g, ' ');
+          fullPhrase = `${countPrefix} ${descStr}${matchedMaterial}`;
         } else if (descriptors.length > 0) {
           fullPhrase = `${descriptors.join(' ')} ${matchedMaterial}`;
         } else {
@@ -463,49 +690,59 @@
       }
       upsertChip(itemRegistry, matchedMaterial, measureList, fullPhrase, 'measure', false);
     }
-
-    // Capture Technique/Safety locally
-    for (const pattern of TECHNIQUE_PATTERNS) {
-      if (pattern.test(lower)) {
-        upsertChip(techRegistry, text, techList, text, 'tech', false);
-        break;
-      }
-    }
-  }
-
-  function queueForAiClassification(entry) {
-    if (!aiClassifyEnabled) return;
-    pendingAiLines.push(entry);
   }
 
   async function postApi(payload) {
     const resp = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      mode: 'cors',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(payload)
     });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    if (!resp.ok) throw new Error("HTTP error " + resp.status);
     return await resp.json();
   }
 
   async function runAiClassificationBatch() {
-    if (!aiClassifyEnabled || pendingAiLines.length === 0 || !APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PASTE_YOUR') !== -1) return;
-    const batch = [...pendingAiLines];
+    if (!aiClassifyEnabled || pendingAiLines.length === 0 || isAiBatchRunning) return;
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("YOUR_") !== -1) return;
+
+    isAiBatchRunning = true;
+    const batch = pendingAiLines.slice();
     pendingAiLines = [];
-    aiStatus.style.display = 'flex';
+    aiStatus.style.display = "flex";
+
     try {
-      const result = await postApi({ action: 'classifyTranscript', lines: batch, domain: currentDomain });
+      const result = await postApi({
+        action: "classifyTranscript",
+        lines: batch,
+        domain: currentDomain
+      });
+
       if (result.success) {
-        rebuildListFromAiState(toolList, toolRegistry, result.tools || [], 'tool');
-        rebuildListFromAiState(measureList, itemRegistry, result.ingredients || [], 'measure');
-        rebuildListFromAiState(techList, techRegistry, result.techniques || [], 'tech');
+        rebuildListFromAiState(toolList, toolRegistry, result.tools, 'tool');
+        rebuildListFromAiState(measureList, itemRegistry, result.ingredients, 'measure');
+        rebuildListFromAiState(techList, techRegistry, result.techniques, 'tech');
       }
     } catch (err) {
-      console.warn('AI classify failed:', err.message);
+      console.warn("AI batch update failed:", err.message);
     } finally {
-      aiStatus.style.display = 'none';
+      aiStatus.style.display = "none";
+      isAiBatchRunning = false;
+    }
+  }
+
+  async function hydrateFromPersistedState() {
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("YOUR_") !== -1) return;
+    try {
+      const result = await postApi({ action: "classifyTranscript", lines: [], domain: currentDomain });
+      if (result.success) {
+        rebuildListFromAiState(toolList, toolRegistry, result.tools, 'tool');
+        rebuildListFromAiState(measureList, itemRegistry, result.ingredients, 'measure');
+        rebuildListFromAiState(techList, techRegistry, result.techniques, 'tech');
+      }
+    } catch (err) {
+      console.log("Could not hydrate from persisted state:", err.message);
     }
   }
 
@@ -513,26 +750,30 @@
     if (aiBatchTimer) return;
     aiBatchTimer = setInterval(runAiClassificationBatch, AI_BATCH_INTERVAL_MS);
   }
+
   function stopAiBatchTimer() {
-    if (aiBatchTimer) { clearInterval(aiBatchTimer); aiBatchTimer = null; }
+    if (aiBatchTimer) {
+      clearInterval(aiBatchTimer);
+      aiBatchTimer = null;
+    }
     pendingAiLines = [];
-    aiStatus.style.display = 'none';
+    aiStatus.style.display = "none";
   }
 
   async function resetPersistedState() {
-    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PASTE_YOUR') !== -1) return;
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf("YOUR_") !== -1) return;
     try {
-      await postApi({ action: 'resetSessionState' });
+      await postApi({ action: "resetSessionState" });
       rebuildListFromAiState(toolList, toolRegistry, [], 'tool');
       rebuildListFromAiState(measureList, itemRegistry, [], 'measure');
       rebuildListFromAiState(techList, techRegistry, [], 'tech');
     } catch (err) {
-      console.warn('Reset failed:', err.message);
+      console.error("Reset state error:", err.message);
     }
   }
 
   newSessionBtn.addEventListener('click', () => {
-    if (confirm('Start a fresh session? This clears the current memory in Google Sheets.')) {
+    if (confirm("Reset current session and clear Google Sheets persistent memory?")) {
       resetPersistedState();
     }
   });
@@ -540,7 +781,8 @@
   aiToggle.addEventListener('change', () => {
     aiClassifyEnabled = aiToggle.checked;
     aiWrap.classList.toggle('on', aiClassifyEnabled);
-    if (aiClassifyEnabled) startAiBatchTimer(); else stopAiBatchTimer();
+    if (aiClassifyEnabled) startAiBatchTimer();
+    else stopAiBatchTimer();
     updateModeText();
   });
 
@@ -548,6 +790,7 @@
     const rect = mainCol.getBoundingClientRect();
     displayCanvas.width = rect.width;
     displayCanvas.height = rect.height;
+
     const obRect = overheadCanvas.getBoundingClientRect();
     overheadCanvas.width = obRect.width || 300;
     overheadCanvas.height = obRect.height || 169;
@@ -570,12 +813,16 @@
     targetCtx.clip();
     targetCtx.fillStyle = '#000';
     targetCtx.fillRect(x, y, w, h);
-    const originXpx = x + zoomOriginX * w, originYpx = y + zoomOriginY * h;
+
+    const originXpx = x + zoomOriginX * w;
+    const originYpx = y + zoomOriginY * h;
+
     targetCtx.translate(originXpx, originYpx);
     if (flipped) targetCtx.rotate(Math.PI);
     if (mirrored) targetCtx.scale(-1, 1);
     targetCtx.scale(currentZoom, currentZoom);
     targetCtx.translate(-originXpx, -originYpx);
+
     drawContain(targetCtx, mainVideo, x, y, w, h);
     targetCtx.restore();
   }
@@ -598,10 +845,12 @@
     if (!frozen) {
       recordCtx.fillStyle = '#000';
       recordCtx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
+
       if (overheadActive && overheadVideo.videoWidth) {
         const mainW = recordCanvas.width * 0.72;
         const overheadW = recordCanvas.width - mainW;
         drawMainFeed(recordCtx, 0, 0, mainW, recordCanvas.height);
+
         recordCtx.save();
         recordCtx.fillStyle = '#000';
         recordCtx.fillRect(mainW, 0, overheadW, recordCanvas.height);
@@ -618,24 +867,30 @@
   }
 
   function startRecorder() {
-    if (!mainStream) return;
     const canvasStream = recordCanvas.captureStream(30);
-    const audioTrack = mainStream.getAudioTracks()[0];
+    const audioTrack = mainStream ? mainStream.getAudioTracks()[0] : null;
     if (audioTrack) canvasStream.addTrack(audioTrack);
 
     let mimeType = 'video/webm;codecs=vp9,opus';
     if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
-    try { mediaRecorder = new MediaRecorder(canvasStream, { mimeType }); }
-    catch (e) { mediaRecorder = new MediaRecorder(canvasStream); }
+
+    try {
+      mediaRecorder = new MediaRecorder(canvasStream, { mimeType });
+    } catch (e) {
+      mediaRecorder = new MediaRecorder(canvasStream);
+    }
 
     recordedChunks = [];
-    mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.ondataavailable = e => {
+      if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+
     mediaRecorder.start(1000);
     if (!sessionStartTime) sessionStartTime = Date.now();
   }
 
   function stopRecorderSilently() {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
       mediaRecorder.onstop = null;
       try { mediaRecorder.stop(); } catch (e) {}
     }
@@ -659,39 +914,24 @@
     transcribeWrap.classList.toggle('on', transcriptionEnabled);
     if (transcriptionEnabled) {
       if (!recognizer) initSpeech();
-      else { try { recognizer.start(); } catch (e) {} }
+      else try { recognizer.start(); } catch (e) {}
       if (aiClassifyEnabled) startAiBatchTimer();
     } else {
-      if (recognizer) { try { recognizer.stop(); } catch (e) {} }
+      if (recognizer) try { recognizer.stop(); } catch (e) {}
       stopAiBatchTimer();
     }
     updateModeText();
   });
 
-  async function getStreamAdaptive(deviceId, isAudio) {
-    const videoConstraint = deviceId ? { deviceId: { exact: deviceId } } : true;
-    try {
-      return await navigator.mediaDevices.getUserMedia({
-        video: deviceId
-          ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-          : { width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: isAudio
-      });
-    } catch (err) {
-      return await navigator.mediaDevices.getUserMedia({
-        video: videoConstraint,
-        audio: isAudio
-      });
-    }
-  }
-
   async function initMainMedia(deviceId) {
     if (mainStream) mainStream.getTracks().forEach(t => t.stop());
-    try {
-      mainStream = await getStreamAdaptive(deviceId, true);
-    } catch (e) {
-      mainStream = await getStreamAdaptive(deviceId, false);
-    }
+
+    const constraints = {
+      video: deviceId ? { exact: deviceId } : { ideal: 1920 },
+      audio: true
+    };
+
+    mainStream = await navigator.mediaDevices.getUserMedia(constraints);
     mainVideo.srcObject = mainStream;
     statusDot.classList.add('live');
 
@@ -701,6 +941,7 @@
       renderRecordFrame();
       renderOverheadFrame();
     }
+
     if (recordingEnabled && !mediaRecorder) startRecorder();
     if (transcriptionEnabled && !recognizer) initSpeech();
     if (transcriptionEnabled && aiClassifyEnabled) startAiBatchTimer();
@@ -709,11 +950,12 @@
 
   async function enumerateCameras() {
     const devices = await navigator.mediaDevices.enumerateDevices();
-    currentDevices = devices.filter(d => d.kind === 'videoinput');
+    const videoDevices = devices.filter(d => d.kind === 'videoinput');
+
     [cameraSelect, overheadSelect].forEach(sel => {
-      const keepFirst = sel.id === 'overheadSelect' ? '<option value="">Choose overhead camera…</option>' : '';
-      sel.innerHTML = keepFirst;
-      currentDevices.forEach((d, i) => {
+      const isOverhead = (sel.id === 'overheadSelect');
+      sel.innerHTML = isOverhead ? '<option value="">Choose overhead camera...</option>' : '';
+      videoDevices.forEach((d, i) => {
         const opt = document.createElement('option');
         opt.value = d.deviceId;
         opt.textContent = d.label || `Camera ${i + 1}`;
@@ -722,26 +964,27 @@
     });
   }
 
-  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-    navigator.mediaDevices.addEventListener('devicechange', async () => {
-      await enumerateCameras();
-    });
-  }
-
   cameraSelect.addEventListener('change', async (e) => {
-    try { await initMainMedia(e.target.value); } catch (err) {}
+    try { await initMainMedia(e.target.value); } catch (err) { console.error("Camera switch error:", err); }
   });
 
   overheadBtn.addEventListener('click', () => {
-    if (!overheadActive) overheadSelect.style.display = 'inline-block';
-    else stopOverhead();
+    if (!overheadActive) {
+      overheadSelect.style.display = 'inline-block';
+    } else {
+      stopOverhead();
+    }
   });
 
   overheadSelect.addEventListener('change', async (e) => {
     const deviceId = e.target.value;
     if (!deviceId) return;
+
     try {
-      overheadStream = await getStreamAdaptive(deviceId, false);
+      overheadStream = await navigator.mediaDevices.getUserMedia({
+        video: { exact: deviceId },
+        audio: false
+      });
       overheadVideo.srcObject = overheadStream;
       overheadActive = true;
       overheadBtn.textContent = 'Remove Overhead Feed';
@@ -749,12 +992,17 @@
       overheadBox.style.display = 'block';
       overheadSelect.style.display = 'none';
       resizeCanvases();
-    } catch (err) {}
+    } catch (err) {
+      console.error("Overhead camera activation failed:", err);
+    }
   });
 
   function stopOverhead() {
-    if (overheadStream) overheadStream.getTracks().forEach(t => t.stop());
-    overheadStream = null; overheadActive = false;
+    if (overheadStream) {
+      overheadStream.getTracks().forEach(t => t.stop());
+      overheadStream = null;
+    }
+    overheadActive = false;
     overheadBtn.textContent = 'Add Overhead Feed';
     overheadBtn.classList.remove('active');
     overheadBox.style.display = 'none';
@@ -765,46 +1013,60 @@
 
   displayCanvas.addEventListener('dblclick', (e) => {
     const rect = displayCanvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width, y = (e.clientY - rect.top) / rect.height;
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+
     if (currentZoom === 1) {
-      zoomOriginX = x; zoomOriginY = y; currentZoom = 2.5;
+      zoomOriginX = x;
+      zoomOriginY = y;
+      currentZoom = 2.5;
       zoomIndicator.style.display = 'block';
     } else {
-      currentZoom = 1; zoomOriginX = 0.5; zoomOriginY = 0.5;
+      currentZoom = 1;
+      zoomOriginX = 0.5;
+      zoomOriginY = 0.5;
       zoomIndicator.style.display = 'none';
     }
   });
 
   resetZoomBtn.addEventListener('click', () => {
-    currentZoom = 1; zoomOriginX = 0.5; zoomOriginY = 0.5;
+    currentZoom = 1;
+    zoomOriginX = 0.5;
+    zoomOriginY = 0.5;
     zoomIndicator.style.display = 'none';
   });
 
-  function toggleMirror() { mirrored = !mirrored; mirrorBtn.classList.toggle('active', mirrored); }
+  function toggleMirror() {
+    mirrored = !mirrored;
+    mirrorBtn.classList.toggle('active', mirrored);
+  }
   mirrorBtn.addEventListener('click', toggleMirror);
 
   function toggleFlip() {
-    flipped = !flipped; flipBtn.classList.toggle('active', flipped);
+    flipped = !flipped;
+    flipBtn.classList.toggle('active', flipped);
     flipIndicator.style.display = flipped ? 'block' : 'none';
   }
   flipBtn.addEventListener('click', toggleFlip);
 
   function toggleFreeze() {
-    frozen = !frozen; freezeBtn.classList.toggle('active', frozen);
+    frozen = !frozen;
+    freezeBtn.classList.toggle('active', frozen);
     freezeOverlay.style.display = frozen ? 'block' : 'none';
   }
   freezeBtn.addEventListener('click', toggleFreeze);
 
   document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
     if (e.code === 'Space') { e.preventDefault(); toggleFreeze(); }
-    if (e.key.toLowerCase() === 'm') { toggleMirror(); }
-    if (e.key.toLowerCase() === 'f') { toggleFlip(); }
+    if (e.key.toLowerCase() === 'm') toggleMirror();
+    if (e.key.toLowerCase() === 'f') toggleFlip();
   });
 
   function initSpeech() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
+
     recognizer = new SpeechRecognition();
     recognizer.continuous = true;
     recognizer.interimResults = true;
@@ -815,25 +1077,19 @@
         const result = event.results[i];
         const text = result[0].transcript.trim();
         if (result.isFinal && text.length > 0) {
-          const time = elapsedTimeStr();
-          const entry = { time, text };
+          const type = classifySpeech(text);
+          const entry = { time: elapsedTimeStr(), type: type, text: text };
           transcriptLog.push(entry);
           extractCategoriesLocal(text);
-          queueForAiClassification(entry);
+          if (aiClassifyEnabled) pendingAiLines.push(entry);
         }
       }
     };
 
-    recognizer.onerror = (e) => {
-      if (e.error === 'no-speech') return;
-      console.warn('Speech recognition warning:', e.error);
-    };
-
+    recognizer.onerror = (e) => console.warn("Speech API:", e.error);
     recognizer.onend = () => {
       if (mainStream && transcriptionEnabled) {
-        setTimeout(() => { 
-          try { recognizer.start(); } catch (err) {} 
-        }, 300);
+        setTimeout(() => { try { recognizer.start(); } catch (err) {} }, 400);
       }
     };
 
@@ -841,15 +1097,15 @@
   }
 
   async function uploadPayload(base64Video, durationSeconds, sessionTitle, mimeType) {
-    exportStatus.textContent = 'Uploading demonstration package to Google Drive…';
+    exportStatus.textContent = "Uploading package to Google Drive...";
     try {
       const result = await postApi({
-        action: 'saveDemonstrationPackage',
+        action: "saveDemonstrationPackage",
         base64Video: base64Video,
         transcriptLog: transcriptLog,
         sessionTitle: sessionTitle,
         thumbnailBase64: thumbnailBase64,
-        meta: { durationSeconds: durationSeconds, mimeType: mimeType || 'none' }
+        meta: { durationSeconds: durationSeconds, mimeType: mimeType || 'video/webm' }
       });
       onSaveSuccess(result);
     } catch (err) {
@@ -859,27 +1115,32 @@
 
   finishBtn.addEventListener('click', async () => {
     exportOverlay.style.display = 'flex';
-    exportStatus.textContent = 'Packaging demonstration…';
+    exportStatus.textContent = "Finalizing session...";
     spinner.style.display = 'block';
     closeExportBtn.style.display = 'none';
     exportLinks.innerHTML = '';
 
-    if (recognizer) { try { recognizer.stop(); } catch (e) {} }
-    if (pendingAiLines.length > 0) { await runAiClassificationBatch(); }
+    if (recognizer) try { recognizer.stop(); } catch (e) {}
     stopAiBatchTimer();
+
+    if (pendingAiLines.length > 0) {
+      await runAiClassificationBatch();
+    }
 
     try {
       const snapshotSource = (mediaRecorder && mediaRecorder.state === 'recording') ? recordCanvas : displayCanvas;
       thumbnailBase64 = snapshotSource.toDataURL('image/png');
-    } catch (e) { thumbnailBase64 = null; }
+    } catch (e) {
+      thumbnailBase64 = null;
+    }
 
-    const durationSeconds = sessionStartTime ? (Date.now() - sessionStartTime) / 1000 : 0;
+    const durationSeconds = sessionStartTime ? Math.round((Date.now() - sessionStartTime) / 1000) : 0;
     const sessionTitle = titleInput.value.trim();
 
     if (mediaRecorder && mediaRecorder.state === 'recording') {
       const recorderRef = mediaRecorder;
       recorderRef.onstop = async () => {
-        exportStatus.textContent = 'Encoding video…';
+        exportStatus.textContent = "Encoding video file...";
         const blob = new Blob(recordedChunks, { type: recorderRef.mimeType || 'video/webm' });
         const reader = new FileReader();
         reader.onload = async function() {
@@ -892,7 +1153,7 @@
     } else if (transcriptLog.length > 0) {
       await uploadPayload(null, durationSeconds, sessionTitle, null);
     } else {
-      exportStatus.textContent = 'Nothing to save yet — ensure Record or Transcribe is enabled.';
+      exportStatus.textContent = "No demonstration content to export yet.";
       spinner.style.display = 'none';
       closeExportBtn.style.display = 'inline-block';
     }
@@ -901,34 +1162,39 @@
   function onSaveSuccess(result) {
     spinner.style.display = 'none';
     if (result.success) {
-      exportStatus.textContent = 'Saved successfully!';
-      const videoLink = result.videoUrl ? `<a href="${result.videoUrl}" target="_blank">Open Video File</a>` : '';
-      exportLinks.innerHTML = `${videoLink}<a href="${result.docUrl}" target="_blank">Open Demonstration Doc</a>`;
+      exportStatus.textContent = "Saved to Google Drive!";
+      const videoLink = result.videoUrl ? `<a href="${result.videoUrl}" target="_blank">🎬 Open Saved Video</a>` : '';
+      exportLinks.innerHTML = `${videoLink}<a href="${result.docUrl}" target="_blank">📄 Open Demonstration & Rubric Doc</a>`;
     } else {
-      exportStatus.textContent = 'Error: ' + result.message;
+      exportStatus.textContent = "Export error: " + result.message;
     }
     closeExportBtn.style.display = 'inline-block';
   }
 
   function onSaveFailure(err) {
     spinner.style.display = 'none';
-    exportStatus.textContent = 'Upload failed: ' + (err.message || err);
+    exportStatus.textContent = "Upload failed: " + err.message + ". Check your Web App deployment.";
     closeExportBtn.style.display = 'inline-block';
   }
 
-  closeExportBtn.addEventListener('click', () => { exportOverlay.style.display = 'none'; });
+  closeExportBtn.addEventListener('click', () => {
+    exportOverlay.style.display = 'none';
+  });
 
   async function boot() {
     try {
       resizeCanvases();
+      updateDomainLabels();
       await initMainMedia(null);
       await enumerateCameras();
+      await hydrateFromPersistedState();
       updateModeText();
-    } catch (err) {}
+    } catch (err) {
+      console.warn("Camera/Mic initial access error:", err.message);
+    }
   }
 
   boot();
-})();
 </script>
 </body>
 </html>
