@@ -1,20 +1,22 @@
 /**
- * Classroom Live Visualizer - Backend API (v9)
- * Upgraded to Gemini 3.5 Generation (gemini-3.5-flash / gemini-3.5-flash-lite)
+ * Classroom Live Visualizer - Backend API (v7 Enhanced)
  * Deploy as a Web App:
- *   Execute as: Me (<your-email>)
- *   Who has access: Anyone
+ *   - Execute as: Me (your Google account)
+ *   - Who has access: Anyone
+ *
+ * Requirements:
+ * 1. Script Properties: GEMINI_API_KEY (from Google AI Studio)
+ * 2. Deploy -> Manage Deployments -> New Version every time you update this code.
  */
 
 const FOLDER_NAME = "Classroom Demonstrations";
-const PRIMARY_MODEL = "gemini-3.5-flash";
-const FALLBACK_MODEL = "gemini-3.5-flash-lite";
+const GEMINI_MODEL = "gemini-2.5-flash-lite";
 const STATE_SHEET_NAME = "Live_Classification_State";
 const STATE_SPREADSHEET_NAME = "Classroom Live Visualizer - State";
 
 function doGet() {
   return ContentService.createTextOutput(
-    JSON.stringify({ status: "ok", message: "Classroom Live Visualizer API is running." })
+    JSON.stringify({ status: "ok", message: "Classroom Live Visualizer API is active and running." })
   ).setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -22,8 +24,9 @@ function doPost(e) {
   let responseObj;
   try {
     if (!e || !e.postData || !e.postData.contents) {
-      throw new Error("No POST body received.");
+      throw new Error("No POST payload received.");
     }
+
     const payload = JSON.parse(e.postData.contents);
     const action = payload.action;
 
@@ -40,7 +43,7 @@ function doPost(e) {
     } else if (action === "resetSessionState") {
       responseObj = resetStateSheet_();
     } else {
-      responseObj = { success: false, message: "Unknown action: " + action };
+      responseObj = { success: false, message: "Unknown API action: " + action };
     }
   } catch (err) {
     responseObj = { success: false, message: "Server error: " + err.message };
@@ -50,14 +53,15 @@ function doPost(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// =====================================================================
-// PERSISTENT STATE STORAGE (Google Sheets)
-// =====================================================================
+// ============================================================================
+// 1. STATE SPREADSHEET (Persistent memory across batch intervals)
+// ============================================================================
 
 function getStateSpreadsheet_() {
   const props = PropertiesService.getScriptProperties();
   let ssId = props.getProperty('STATE_SPREADSHEET_ID');
   let ss = null;
+
   if (ssId) {
     try { ss = SpreadsheetApp.openById(ssId); } catch (e) { ss = null; }
   }
@@ -75,8 +79,8 @@ function getOrCreateStateSheet_() {
     sheet = ss.insertSheet(STATE_SHEET_NAME);
     sheet.appendRow(["Category", "Item"]);
     sheet.setFrozenRows(1);
-    sheet.setColumnWidth(1, 120);
-    sheet.setColumnWidth(2, 420);
+    sheet.setColumnWidth(1, 130);
+    sheet.setColumnWidth(2, 450);
   }
   const defaultSheet = ss.getSheetByName("Sheet1");
   if (defaultSheet && ss.getSheets().length > 1 && defaultSheet.getLastRow() === 0) {
@@ -90,6 +94,7 @@ function readStateFromSheet_() {
   const lastRow = sheet.getLastRow();
   const state = { tools: [], ingredients: [], techniques: [] };
   if (lastRow < 2) return state;
+
   const data = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
   data.forEach(function(row) {
     const category = String(row[0]).toLowerCase().trim();
@@ -108,10 +113,12 @@ function writeStateToSheet_(state) {
   if (lastRow > 1) {
     sheet.getRange(2, 1, lastRow - 1, 2).clearContent();
   }
+
   const rows = [];
-  (state.tools || []).forEach(function(t) { rows.push(["tool", t]); });
-  (state.ingredients || []).forEach(function(i) { rows.push(["ingredient", i]); });
-  (state.techniques || []).forEach(function(t) { rows.push(["technique", t]); });
+  (state.tools || []).forEach(function(t) { if (t && t.trim()) rows.push(["tool", t.trim()]); });
+  (state.ingredients || []).forEach(function(i) { if (i && i.trim()) rows.push(["ingredient", i.trim()]); });
+  (state.techniques || []).forEach(function(t) { if (t && t.trim()) rows.push(["technique", t.trim()]); });
+
   if (rows.length > 0) {
     sheet.getRange(2, 1, rows.length, 2).setValues(rows);
   }
@@ -120,41 +127,26 @@ function writeStateToSheet_(state) {
 function resetStateSheet_() {
   const sheet = getOrCreateStateSheet_();
   const lastRow = sheet.getLastRow();
-  if (lastRow > 1) sheet.getRange(2, 1, lastRow - 1, 2).clearContent();
-  return { success: true, message: "Session state cleared." };
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, 2).clearContent();
+  }
+  return { success: true, message: "Live demonstration state reset successfully." };
 }
 
-// =====================================================================
-// GEMINI 3.5 SEMANTIC EXTRACTION WITH MULTI-MODEL FALLBACK
-// =====================================================================
-
-function callGeminiEndpoint_(modelName, prompt, apiKey) {
-  const url = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
-  const requestPayload = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
-  };
-  const resp = UrlFetchApp.fetch(url, {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify(requestPayload),
-    muteHttpExceptions: true
-  });
-  return {
-    status: resp.getResponseCode(),
-    body: resp.getContentText()
-  };
-}
+// ============================================================================
+// 2. GEMINI CLASSIFICATION & CONTINUOUS EXTRACTION
+// ============================================================================
 
 function classifyWithGemini_(lines, domain) {
   try {
     const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
     if (!apiKey) {
-      return { success: false, message: "GEMINI_API_KEY is not set in Script Properties." };
+      return { success: false, message: "GEMINI_API_KEY is not configured in Script Properties." };
     }
 
     const state = readStateFromSheet_();
 
+    // If no new lines passed, hydrate existing state
     if (!lines || lines.length === 0) {
       return { success: true, tools: state.tools, ingredients: state.ingredients, techniques: state.techniques };
     }
@@ -165,51 +157,63 @@ function classifyWithGemini_(lines, domain) {
 
     const domainLabel = domain || "general practical demonstration";
 
-    const prompt =
-      "You are an expert instructional assistant maintaining a live, continuously corrected classroom demonstration list for " + domainLabel + ".\n\n" +
-      "CURRENT STATE (ground truth in Google Sheet):\n" +
-      "TOOLS: " + JSON.stringify(state.tools) + "\n" +
-      "INGREDIENTS/MATERIALS: " + JSON.stringify(state.ingredients) + "\n" +
-      "TECHNIQUES: " + JSON.stringify(state.techniques) + "\n\n" +
-      "NEW SPOKEN TRANSCRIPT LINES:\n" + transcriptText + "\n\n" +
-      "CRITICAL EXTRACTION & DEDUPLICATION RULES:\n" +
-      "1. ATTRIBUTE MEASUREMENTS DIRECTLY: Never output an isolated measurement or quantity (e.g. NEVER output '300 grams', '500 grams', '10 mm', '2 cups' alone in ingredients). Every measurement MUST be directly combined with its target ingredient/material (e.g. '500 grams of sifted flour', '1200mm dressed pine').\n" +
-      "2. ATTRIBUTE PREPARATION TECHNIQUES: Prep descriptors belong attached to the ingredient (e.g. 'roughly chopped', 'sifted', 'diced', 'planed'). Example: '2 x roughly chopped tomatoes'.\n" +
-      "3. REFINE AND REPLACE IN PLACE: When a speaker corrects, refines, or repeats an item with new measurements (e.g., '300 grams of flour... actually make that 500 grams of sifted flour'), REPLACE the previous entry completely. The list must contain exactly ONE entry for that ingredient showing the most updated, complete state ('500 grams of sifted flour'). NEVER duplicate ingredients.\n" +
-      "4. REMOVAL ON CANCELLATION: If the speaker cancels or says not to use an item (e.g. 'actually don't worry about the sifted flour', 'scratch the pine', 'we don't need the whisk'), REMOVE that item completely from the list.\n" +
-      "5. STANDALONE TECHNIQUES: The 'techniques' list is strictly for overarching procedural methods, physical handling, or safety rules (e.g. 'hold blade at 45 degree angle', 'keep fingers tucked in claw grip', 'ensure glue cures under clamp pressure'). Do not put basic ingredient prep in techniques if it is already attributed to the ingredient.\n" +
-      "6. MERGE SYNONYMS: Combine natural variations (e.g. 'large metal bowl', 'mixing bowl', 'steel bowl') into a single appropriate tool entry.\n\n" +
-      "Output ONLY valid minified JSON with the COMPLETE authoritative lists (no markdown fences, no formatting):\n" +
-      "{\"tools\":[\"...\"],\"ingredients\":[\"...\"],\"techniques\":[\"...\"]}";
+    const systemPrompt =
+      "You are an instructional assistant tracking materials, tools, and safety techniques in real time during a school demonstration for: " + domainLabel + ".\n" +
+      "Maintain and update the existing list based on the new spoken lines.\n\n" +
+      "RULES:\n" +
+      "1. ATTRIBUTE MEASUREMENTS: Never output bare numbers/units alone (e.g. NEVER output '500g', '200mm'). Combine with the noun ('500 grams of plain flour', '1200mm dressed pine').\n" +
+      "2. ATTRIBUTE PREPARATION: Attach prep descriptors to ingredients ('2 roughly diced onions', 'sifted flour').\n" +
+      "3. REFINE/REPLACE: If a speaker adjusts or repeats an item ('actually 500g, not 300g'), update the single existing entry completely. Do not duplicate items.\n" +
+      "4. CANCELLATION: If an item is canceled or ruled out ('don't use the whisk', 'scratch the pine'), remove it from the list.\n" +
+      "5. TECHNIQUES: Reserve for methods, safety, or physical posture cues ('claw grip on the tomato', 'hold chisel bevel down at 30 degrees').\n" +
+      "6. RETURN ONLY RAW JSON matching the structure: {\"tools\":[], \"ingredients\":[], \"techniques\":[]}.";
 
-    // Try Gemini 3.5 Flash
-    let callResult = callGeminiEndpoint_(PRIMARY_MODEL, prompt, apiKey);
+    const userMessage =
+      "CURRENT STATE:\n" +
+      "Tools: " + JSON.stringify(state.tools) + "\n" +
+      "Ingredients/Materials: " + JSON.stringify(state.ingredients) + "\n" +
+      "Techniques/Safety: " + JSON.stringify(state.techniques) + "\n\n" +
+      "NEW SPOKEN TRANSCRIPT:\n" + transcriptText;
 
-    // Fall back to Gemini 3.5 Flash-Lite if busy or unavailable
-    if (callResult.status === 503 || callResult.status === 429 || callResult.status === 404) {
-      Logger.log("Primary model " + PRIMARY_MODEL + " returned " + callResult.status + ". Falling back to " + FALLBACK_MODEL);
-      Utilities.sleep(1000);
-      callResult = callGeminiEndpoint_(FALLBACK_MODEL, prompt, apiKey);
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + apiKey;
+    const requestPayload = {
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: userMessage }] }],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: "application/json"
+      }
+    };
+
+    const resp = UrlFetchApp.fetch(url, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify(requestPayload),
+      muteHttpExceptions: true
+    });
+
+    const status = resp.getResponseCode();
+    const bodyText = resp.getContentText();
+
+    if (status !== 200) {
+      return { success: false, message: "Gemini API error (" + status + "): " + bodyText.substring(0, 180) };
     }
 
-    if (callResult.status !== 200) {
-      Logger.log("Gemini API call failed with status " + callResult.status + ": " + callResult.body);
-      return { success: true, tools: state.tools, ingredients: state.ingredients, techniques: state.techniques, fallback: true };
-    }
-
-    const body = JSON.parse(callResult.body);
+    const body = JSON.parse(bodyText);
     if (!body.candidates || !body.candidates[0] || !body.candidates[0].content) {
-      return { success: true, tools: state.tools, ingredients: state.ingredients, techniques: state.techniques };
+      return { success: false, message: "Invalid candidate returned from Gemini." };
     }
 
-    let rawText = body.candidates[0].content.parts[0].text || "";
+    let rawText = body.candidates[0].content.parts[0].text || "{}";
     rawText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
 
     const parsed = JSON.parse(rawText);
 
-    // Filter out isolated measurements
+    // Filter isolated measurements as an additional deterministic safety gate
     const isolatedMeasureRegex = /^\s*(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|ml|mL|l|L|litres?|cups?|tbsp|tsp|teaspoons?|tablespoons?|degrees?|°[CF]?|mm|cm|m|metres?|inches?|pinch|dash|handful)\s*$/i;
-    const cleanIngredients = (parsed.ingredients || []).filter(item => !isolatedMeasureRegex.test(item.trim()));
+    const cleanIngredients = (parsed.ingredients || []).filter(function(item) {
+      return item && !isolatedMeasureRegex.test(item.trim());
+    });
 
     const newState = {
       tools: parsed.tools || [],
@@ -219,18 +223,21 @@ function classifyWithGemini_(lines, domain) {
 
     writeStateToSheet_(newState);
 
-    return { success: true, tools: newState.tools, ingredients: newState.ingredients, techniques: newState.techniques };
+    return {
+      success: true,
+      tools: newState.tools,
+      ingredients: newState.ingredients,
+      techniques: newState.techniques
+    };
 
   } catch (err) {
-    Logger.log("Gemini classification exception: " + err.message);
-    const state = readStateFromSheet_();
-    return { success: true, tools: state.tools, ingredients: state.ingredients, techniques: state.techniques };
+    return { success: false, message: "Classification failed: " + err.message };
   }
 }
 
-// =====================================================================
-// DRIVE & GOOGLE DOC GENERATION
-// =====================================================================
+// ============================================================================
+// 3. FOLDER & EXPORT UTILITIES
+// ============================================================================
 
 function getOrCreateFolder_() {
   const folders = DriveApp.getFoldersByName(FOLDER_NAME);
@@ -248,9 +255,9 @@ function formatReadableDateTime_(date) {
 }
 
 function sanitizeTitle_(title) {
-  if (!title || typeof title !== 'string') return "Untitled_Demo";
+  if (!title || typeof title !== 'string') return "Demonstration";
   const cleaned = title.trim().replace(/[^\w\s-]/g, '').replace(/\s+/g, '_');
-  return cleaned.length > 0 ? cleaned.substring(0, 60) : "Untitled_Demo";
+  return cleaned.length > 0 ? cleaned.substring(0, 50) : "Demonstration";
 }
 
 function buildStructuredSections_(transcriptLog) {
@@ -272,11 +279,11 @@ function buildSuccessCriteria_(sections) {
   const criteria = [];
   sections.steps.forEach(function(step) {
     const text = step.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, '');
-    criteria.push(`Student accurately executes the procedure: "${text}"`);
+    criteria.push(`Accurately sequence & execute: "${text}"`);
   });
   sections.techniques.forEach(function(tech) {
     const text = tech.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, '');
-    criteria.push(`Student correctly demonstrates required technique/safety cue: "${text}"`);
+    criteria.push(`Demonstrate safety/quality standard: "${text}"`);
   });
   return criteria;
 }
@@ -290,6 +297,10 @@ function decodeBase64Image_(base64Image, fileNamePrefix) {
   return Utilities.newBlob(bytes, mimeType, `${fileNamePrefix}.png`);
 }
 
+// ============================================================================
+// 4. DEMONSTRATION SAVER & GOOGLE DOC GENERATOR
+// ============================================================================
+
 function saveDemonstrationPackage(base64Video, transcriptLog, meta, sessionTitle, thumbnailBase64) {
   try {
     meta = meta || {};
@@ -297,10 +308,11 @@ function saveDemonstrationPackage(base64Video, transcriptLog, meta, sessionTitle
     const folder = getOrCreateFolder_();
     const timestamp = formatTimestamp_(now);
     const titleSlug = sanitizeTitle_(sessionTitle);
-    const displayTitle = (sessionTitle && sessionTitle.trim()) ? sessionTitle.trim() : "Untitled Demonstration";
+    const displayTitle = (sessionTitle && sessionTitle.trim()) ? sessionTitle.trim() : "Demonstration Lesson";
 
     let videoFile = null;
 
+    // Decode and save video file (if recording was enabled)
     if (base64Video) {
       let cleanBase64 = base64Video;
       let mimeType = meta.mimeType || "video/webm";
@@ -312,9 +324,9 @@ function saveDemonstrationPackage(base64Video, transcriptLog, meta, sessionTitle
 
       const extension = mimeType.indexOf("mp4") !== -1 ? "mp4" : "webm";
       const videoFileName = `${titleSlug}_${timestamp}.${extension}`;
-
       const decodedBytes = Utilities.base64Decode(cleanBase64);
       const videoBlob = Utilities.newBlob(decodedBytes, mimeType, videoFileName);
+
       videoFile = folder.createFile(videoBlob);
       videoFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     }
@@ -328,14 +340,17 @@ function saveDemonstrationPackage(base64Video, transcriptLog, meta, sessionTitle
     const durSec = durationSeconds % 60;
     const durationStr = `${durMin} min ${durSec} sec`;
 
-    const docName = `${titleSlug} - Demo Log_${timestamp}`;
+    // Create demonstration summary Google Doc
+    const docName = `${titleSlug} - Lesson Package (${timestamp})`;
     const doc = DocumentApp.create(docName);
     const body = doc.getBody();
     body.clear();
 
     body.appendParagraph(displayTitle).setHeading(DocumentApp.ParagraphHeading.TITLE);
-    body.appendParagraph("Classroom Demonstration Report").setHeading(DocumentApp.ParagraphHeading.SUBTITLE);
+    body.appendParagraph("Classroom Practical Demonstration & Assessment Criteria")
+        .setHeading(DocumentApp.ParagraphHeading.SUBTITLE);
 
+    // Embed snapshot thumbnail if captured
     const thumbBlob = decodeBase64Image_(thumbnailBase64, `${titleSlug}_thumbnail`);
     if (thumbBlob) {
       try {
@@ -343,50 +358,55 @@ function saveDemonstrationPackage(base64Video, transcriptLog, meta, sessionTitle
         img.setWidth(360);
         img.setHeight(Math.round(360 * (img.getHeight() / img.getWidth())) || 202);
       } catch (imgErr) {
-        body.appendParagraph("(Thumbnail could not be embedded: " + imgErr.message + ")").setItalic(true);
+        body.appendParagraph("(Snapshot preview unavailable)").setItalic(true);
       }
     }
 
-    body.appendParagraph("Demonstration Overview").setHeading(DocumentApp.ParagraphHeading.HEADING1);
-    body.appendParagraph(`Focus / Recipe / Skill: ${displayTitle}`);
-    body.appendParagraph(`Date & Time: ${formatReadableDateTime_(now)}`);
-    body.appendParagraph(`Total Duration: ${durationStr}`);
+    // Overview Metadata
+    body.appendParagraph("Overview").setHeading(DocumentApp.ParagraphHeading.HEADING1);
+    body.appendParagraph(`Focus Skill / Project: ${displayTitle}`);
+    body.appendParagraph(`Demonstrated: ${formatReadableDateTime_(now)}`);
+    body.appendParagraph(`Recorded Duration: ${durationStr}`);
 
     if (videoFile) {
-      const videoPara = body.appendParagraph("Recorded Video: ");
+      const videoPara = body.appendParagraph("Video Recording: ");
       videoPara.appendText(videoFile.getUrl()).setLinkUrl(videoFile.getUrl());
     } else {
-      body.appendParagraph("Recorded Video: none (this session ran without recording).").setItalic(true);
+      body.appendParagraph("Video Recording: Audio & live transcription only.").setItalic(true);
     }
 
-    body.appendParagraph("Required Ingredients & Materials").setHeading(DocumentApp.ParagraphHeading.HEADING1);
+    // Materials / Ingredients
+    body.appendParagraph("Materials & Ingredients").setHeading(DocumentApp.ParagraphHeading.HEADING1);
     if (state.ingredients && state.ingredients.length > 0) {
-      state.ingredients.forEach(function(ing) {
-        body.appendListItem(ing).setGlyphType(DocumentApp.GlyphType.BULLET);
+      state.ingredients.forEach(function(item) {
+        body.appendListItem(item).setGlyphType(DocumentApp.GlyphType.BULLET);
       });
     } else {
-      body.appendParagraph("No ingredients or materials recorded.").setItalic(true);
+      body.appendParagraph("No specific materials or ingredients identified.").setItalic(true);
     }
 
-    body.appendParagraph("Tools & Equipment Used").setHeading(DocumentApp.ParagraphHeading.HEADING1);
+    // Tools & Equipment
+    body.appendParagraph("Tools & Equipment").setHeading(DocumentApp.ParagraphHeading.HEADING1);
     if (state.tools && state.tools.length > 0) {
       state.tools.forEach(function(tool) {
         body.appendListItem(tool).setGlyphType(DocumentApp.GlyphType.BULLET);
       });
     } else {
-      body.appendParagraph("No tools or equipment recorded.").setItalic(true);
+      body.appendParagraph("No tools or equipment identified.").setItalic(true);
     }
 
-    body.appendParagraph("Structured Procedural Steps").setHeading(DocumentApp.ParagraphHeading.HEADING1);
+    // Procedural Sequence
+    body.appendParagraph("Step-by-Step Procedure").setHeading(DocumentApp.ParagraphHeading.HEADING1);
     if (sections.steps.length > 0) {
       sections.steps.forEach(function(step) {
         body.appendListItem(step).setGlyphType(DocumentApp.GlyphType.NUMBER);
       });
     } else {
-      body.appendParagraph("No distinct steps were detected during this session.").setItalic(true);
+      body.appendParagraph("No discrete procedural steps flagged.").setItalic(true);
     }
 
-    body.appendParagraph("Key Techniques & Safety Cues").setHeading(DocumentApp.ParagraphHeading.HEADING1);
+    // Techniques & Safety
+    body.appendParagraph("Techniques & Safety Rules").setHeading(DocumentApp.ParagraphHeading.HEADING1);
     if (sections.techniques.length > 0) {
       sections.techniques.forEach(function(tech) {
         const li = body.appendListItem(tech);
@@ -394,54 +414,48 @@ function saveDemonstrationPackage(base64Video, transcriptLog, meta, sessionTitle
         li.editAsText().setForegroundColor("#c0392b");
       });
     } else {
-      body.appendParagraph("No technique or safety cues were detected during this session.").setItalic(true);
+      body.appendParagraph("No safety or specific technique points flagged.").setItalic(true);
     }
 
+    // Rubric / Success Criteria
     body.appendParagraph("Success Criteria (Rubric Checkpoints)").setHeading(DocumentApp.ParagraphHeading.HEADING1);
     if (successCriteria.length > 0) {
-      successCriteria.forEach(function(c) {
-        const li = body.appendListItem(c);
-        li.setGlyphType(DocumentApp.GlyphType.BULLET);
+      successCriteria.forEach(function(criterion) {
+        body.appendListItem(criterion).setGlyphType(DocumentApp.GlyphType.CHECKBOX);
       });
     } else {
-      body.appendParagraph("No steps or techniques were detected to generate success criteria from.").setItalic(true);
+      body.appendParagraph("No criteria derived from this session.").setItalic(true);
     }
 
-    body.appendParagraph("Full Raw Transcript").setHeading(DocumentApp.ParagraphHeading.HEADING1);
+    // Full Raw Timestamped Transcript
+    body.appendParagraph("Spoken Transcript Log").setHeading(DocumentApp.ParagraphHeading.HEADING1);
     if (sections.rawLines.length > 0) {
       sections.rawLines.forEach(function(line) {
-        body.appendParagraph(line).setFontSize(10);
+        body.appendParagraph(line).setFontSize(9.5).setForegroundColor("#555555");
       });
     } else {
-      body.appendParagraph("No transcript captured.").setItalic(true);
+      body.appendParagraph("No spoken transcript captured.").setItalic(true);
     }
 
     doc.saveAndClose();
 
+    // Move doc into the dedicated folder
     const docFile = DriveApp.getFileById(doc.getId());
-    docFile.moveTo(folder);
+    folder.addFile(docFile);
+    DriveApp.getRootFolder().removeFile(docFile);
     docFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
     return {
       success: true,
       videoUrl: videoFile ? videoFile.getUrl() : null,
       docUrl: doc.getUrl(),
-      message: "Demonstration package saved successfully."
+      message: "Demonstration saved successfully."
     };
 
   } catch (err) {
     return {
       success: false,
-      message: "Error saving demonstration: " + err.message
+      message: "Save failed: " + err.message
     };
   }
-}
-
-function testClassify() {
-  const testLines = [
-    { time: "00:00:15", text: "we will need 500 grams of sifted flour" },
-    { time: "00:00:30", text: "grab a large metal bowl" }
-  ];
-  const result = classifyWithGemini_(testLines, "cooking");
-  Logger.log(JSON.stringify(result, null, 2));
 }
