@@ -4,17 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Classroom Live Visualizer</title>
-  <!-- Inline SVG icon suppresses 404 console errors -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📹</text></svg>">
   <style>
     :root {
-      --bg:#0a0a0c; --panel:#15151a; --accent:#3ddc97; --step-color:#3ddc97;
-      --tech-color:#ff6b6b; --text:#f2f2f5; --muted:#8a8a94;
+      --bg:#0a0a0c; --panel:#15151a; --accent:#3ddc97; --tech-color:#ff6b6b;
+      --tool:#5aa9ff; --measure:#ffb84d; --text:#f2f2f5; --muted:#8a8a94; --ai:#c792ea;
     }
     * { box-sizing: border-box; }
     html, body {
       margin: 0; padding: 0; background: var(--bg); color: var(--text);
-      font-family: 'Segoe UI', Roboto, Arial, sans-serif; height: 100%; overflow: hidden;
+      font-family: 'Segoe UI', Roboto, -apple-system, sans-serif; height: 100%; overflow: hidden;
     }
     #app { display: flex; flex-direction: column; height: 100vh; }
     #topbar {
@@ -22,83 +21,102 @@
       padding: 10px 18px; background: var(--panel); border-bottom: 1px solid #232329;
       z-index: 20; flex-wrap: wrap; gap: 8px;
     }
-    #topbar h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .5px; }
+    #topbar h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: 0.5px; display: flex; align-items: center; }
     #status-dot {
       width: 10px; height: 10px; border-radius: 50%; background: #444;
-      display: inline-block; margin-right: 8px; transition: background .3s;
+      display: inline-block; margin-right: 8px; transition: background 0.3s;
     }
     #status-dot.live { background: #ff4757; box-shadow: 0 0 8px #ff4757; animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
 
     #controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-    .selgroup { display: flex; flex-direction: column; font-size: 10px; color: var(--muted); gap: 2px; }
-    button, select {
+    button, select, input[type=text] {
       background: #1f1f26; color: var(--text); border: 1px solid #33333c;
-      padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
-      transition: background 0.2s;
+      padding: 7px 11px; border-radius: 6px; font-size: 13px; outline: none;
     }
+    button { cursor: pointer; transition: background 0.2s; }
     button:hover { background: #2a2a33; }
     button.active { background: var(--accent); color: #05130c; border-color: var(--accent); }
     button#finishBtn { background: var(--tech-color); color: #fff; font-weight: 600; }
     button#finishBtn:hover { background: #ff8787; }
+    button#overheadBtn.active { background: var(--measure); color: #211200; border-color: var(--measure); }
+    #titleInput { width: 170px; }
+    #overheadSelect { display: none; }
 
-    #stage { position: relative; flex: 1; overflow: hidden; background: #000; display: flex; }
-    .feed-wrap {
-      position: relative; height: 100%; flex-basis: 100%; transition: flex-basis .35s ease;
-      overflow: hidden; background: #000; cursor: pointer; border-right: 2px solid #111;
+    .toggle-wrap {
+      display: flex; align-items: center; gap: 6px; background: #1f1f26;
+      border: 1px solid #33333c; border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer;
     }
-    .feed-wrap:last-child { border-right: none; }
-    .feed-wrap.hidden { display: none; }
-    .feed-wrap video {
-      width: 100%; height: 100%; object-fit: contain; background: #000;
-      transition: transform .35s ease; transform-origin: 50% 50%; will-change: transform;
+    .toggle-wrap.on { border-color: var(--accent); }
+    #aiWrap.on { border-color: var(--ai); }
+
+    #layout { flex: 1; display: flex; overflow: hidden; }
+    #mainCol {
+      position: relative; flex: 1; overflow: hidden; background: #000;
+      display: flex; align-items: center; justify-content: center;
     }
-    .feed-label {
-      position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,.65);
-      color: var(--muted); font-size: 11px; padding: 4px 10px; border-radius: 12px;
-      z-index: 10; pointer-events: none; text-transform: uppercase; letter-spacing: .5px;
-      border: 1px solid #232329;
+    #stageCanvas { width: 100%; height: 100%; background: #000; }
+    #video, #overheadVideo { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+    #rightCol {
+      width: 320px; flex-shrink: 0; display: flex; flex-direction: column;
+      background: var(--panel); border-left: 1px solid #232329;
     }
-    .feed-wrap.focused .feed-label { color: var(--accent); border-color: var(--accent); }
+    #focusHeader {
+      padding: 12px 14px 8px; font-size: 12px; color: var(--muted); border-bottom: 1px solid #1f1f26;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    #focusHeader b { color: var(--text); font-size: 13px; }
+    #aiStatus { font-size: 11px; color: var(--ai); display: none; align-items: center; gap: 5px; }
+    #aiStatus .aidot { width: 6px; height: 6px; border-radius: 50%; background: var(--ai); animation: pulse 1.2s infinite; }
+
+    #sidepanel {
+      flex: 1; min-height: 0; padding: 12px 14px; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .panel-section h3 {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted);
+      margin: 0 0 8px 0; display: flex; align-items: center; gap: 6px;
+    }
+    .pdot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+    .chip {
+      display: flex; justify-content: space-between; align-items: center;
+      background: #1f1f26; border-radius: 6px; padding: 6px 10px; margin-bottom: 6px;
+      font-size: 13px; transition: background 0.4s ease;
+    }
+    .chip.pulse { background: #2a3f36; }
+    .chip.ai-pulse { background: #2e2540; }
+    .chip .time { color: var(--muted); font-size: 11px; margin-left: 8px; white-space: nowrap; }
+    .tool { border-left: 3px solid var(--tool); }
+    .measure { border-left: 3px solid var(--measure); }
+    .tech { border-left: 3px solid var(--tech-color); }
+    .empty { color: var(--muted); font-size: 12px; font-style: italic; }
+
+    #overheadBox { display: none; flex-shrink: 0; border-top: 1px solid #232329; padding: 10px 14px 14px; }
+    #overheadBox h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--measure); margin: 0 0 8px 0; }
+    #overheadCanvas {
+      width: 100%; aspect-ratio: 16/9; background: #000;
+      border: 2px solid var(--measure); border-radius: 6px; display: block;
+    }
 
     #freeze-overlay {
-      position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-      background: rgba(255,107,107,.9); color: #fff; padding: 6px 14px;
-      border-radius: 20px; font-size: 13px; font-weight: 600; display: none; z-index: 15;
+      position: absolute; top: 14px; left: 14px; background: rgba(255,107,107,0.9);
+      color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; display: none; z-index: 15;
     }
     #zoom-indicator, #flip-indicator {
-      position: absolute; top: 14px; right: 14px; background: rgba(0,0,0,.65);
-      color: var(--accent); padding: 6px 12px; border-radius: 20px; font-size: 12px;
-      display: none; z-index: 15; border: 1px solid #333;
+      position: absolute; top: 14px; right: 14px; background: rgba(0,0,0,0.65);
+      color: var(--accent); padding: 6px 12px; border-radius: 20px; font-size: 12px; display: none; z-index: 15;
     }
     #flip-indicator { top: 50px; color: var(--tech-color); }
-    #listening-indicator {
+    #mode-indicator {
       position: absolute; bottom: 14px; left: 14px; display: flex; align-items: center;
-      gap: 6px; background: rgba(0,0,0,.65); padding: 6px 12px; border-radius: 20px;
-      font-size: 12px; color: var(--muted); z-index: 15; border: 1px solid #333;
+      gap: 6px; background: rgba(0,0,0,0.65); padding: 6px 12px; border-radius: 20px;
+      font-size: 12px; color: var(--muted); z-index: 15;
     }
-    #listening-indicator .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
-
-    #caption-zone {
-      position: absolute; bottom: 0; left: 0; right: 0; height: 32%;
-      display: none; flex-direction: column; justify-content: flex-end;
-      padding: 14px 24px 22px; background: linear-gradient(to top, rgba(0,0,0,.85) 20%, rgba(0,0,0,0));
-      z-index: 12; pointer-events: none;
-    }
-    .badge {
-      display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px;
-      font-weight: 700; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px;
-    }
-    .badge.step { background: var(--step-color); color: #062017; }
-    .badge.technique { background: var(--tech-color); color: #200606; }
-    #current-caption {
-      font-size: clamp(20px, 3vw, 34px); font-weight: 600; line-height: 1.3;
-      text-shadow: 0 2px 6px rgba(0,0,0,.8);
-    }
-    #history-strip { font-size: 13px; color: var(--muted); margin-top: 6px; max-height: 40px; overflow: hidden; }
+    #mode-indicator .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
 
     #export-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,.85); display: none;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none;
       align-items: center; justify-content: center; z-index: 100;
     }
     #export-box {
@@ -109,59 +127,78 @@
     #export-status { color: var(--muted); font-size: 14px; margin: 10px 0; }
     .spinner {
       width: 36px; height: 36px; border: 4px solid #2a2a33; border-top-color: var(--accent);
-      border-radius: 50%; animation: spin .9s linear infinite; margin: 12px auto;
+      border-radius: 50%; animation: spin 0.9s linear infinite; margin: 12px auto;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     #export-links a { color: var(--accent); display: block; margin-top: 8px; text-decoration: none; }
     #export-links a:hover { text-decoration: underline; }
     #closeExport { margin-top: 16px; }
-
-    #error-toast {
-      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-      background: #ff4757; color: #fff; padding: 8px 16px; border-radius: 6px;
-      font-size: 12px; font-weight: 600; display: none; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-    }
   </style>
 </head>
 <body>
-<div id="error-toast"></div>
 <div id="app">
   <div id="topbar">
     <h1><span id="status-dot"></span>Classroom Live Visualizer</h1>
     <div id="controls">
-      <div class="selgroup">Feed A (Main)<select id="cameraSelectA"></select></div>
-      <div class="selgroup">Feed B (Overhead / USB)<select id="cameraSelectB"><option value="">None</option></select></div>
-      <button id="mirrorBtn" title="Mirror focused feed horizontally (M)">Mirror ⇋</button>
-      <button id="flipBtn" title="Flip focused feed 180° (F)">Flip 180° ↕</button>
-      <button id="freezeBtn" title="Freeze focused feed (Space)">Freeze ❄</button>
-      <button id="resetZoomBtn" title="Reset zoom on focused feed">Reset Zoom</button>
+      <input type="text" id="titleInput" placeholder="Session focus...">
+      <select id="domainSelect">
+        <option value="cooking">Cooking</option>
+        <option value="timber">Timber Technology</option>
+        <option value="textiles">Textiles &amp; Sewing</option>
+      </select>
+      <label class="toggle-wrap on" id="recordWrap"><input type="checkbox" id="recordToggle" checked> Record</label>
+      <label class="toggle-wrap on" id="transcribeWrap"><input type="checkbox" id="transcribeToggle" checked> Transcribe</label>
+      <label class="toggle-wrap on" id="aiWrap"><input type="checkbox" id="aiToggle" checked> AI Classify</label>
+      <select id="cameraSelect" title="Main camera"></select>
+      <button id="overheadBtn" title="Overhead camera">Add Overhead Feed</button>
+      <select id="overheadSelect" title="Select overhead camera"></select>
+      <button id="mirrorBtn" title="Mirror (M)">Mirror ⇋</button>
+      <button id="flipBtn" title="Flip 180° (F)">Flip 180° ↕</button>
+      <button id="freezeBtn" title="Freeze (Space)">Freeze ❄</button>
+      <button id="resetZoomBtn">Reset Zoom</button>
+      <button id="newSessionBtn">New Session</button>
       <button id="finishBtn">Finish &amp; Save Demo</button>
     </div>
   </div>
 
-  <div id="stage">
-    <div class="feed-wrap focused" id="wrapA" data-feed="A" style="flex-basis:100%;">
-      <video id="videoA" autoplay playsinline muted></video>
-      <div class="feed-label">Feed A</div>
-    </div>
-    <div class="feed-wrap hidden" id="wrapB" data-feed="B" style="flex-basis:0%;">
-      <video id="videoB" autoplay playsinline muted></video>
-      <div class="feed-label">Feed B — Overhead</div>
+  <div id="layout">
+    <div id="mainCol">
+      <video id="video" autoplay playsinline muted></video>
+      <video id="overheadVideo" autoplay playsinline muted></video>
+      <canvas id="stageCanvas"></canvas>
+      <div id="freeze-overlay">FROZEN — press Space to resume</div>
+      <div id="zoom-indicator">Zoomed 2.5x</div>
+      <div id="flip-indicator">Flipped 180°</div>
+      <div id="mode-indicator"><span class="dot"></span><span id="modeText">Recording + Transcribing</span></div>
     </div>
 
-    <div id="freeze-overlay">FROZEN — press Space to resume</div>
-    <div id="zoom-indicator">Zoomed 2.5x</div>
-    <div id="flip-indicator">Flipped 180°</div>
-    <div id="listening-indicator"><span class="dot"></span>Listening (transcript active)</div>
-    <div id="caption-zone">
-      <div id="badge-row"></div>
-      <div id="current-caption">Listening…</div>
-      <div id="history-strip"></div>
+    <div id="rightCol">
+      <div id="focusHeader">
+        <span>Focus: <b id="focusLabel">Untitled</b></span>
+        <span id="aiStatus"><span class="aidot"></span>AI refining…</span>
+      </div>
+      <div id="sidepanel">
+        <div class="panel-section">
+          <h3><span class="pdot" style="background:var(--tool)"></span><span id="secTitleTools">Tools &amp; Equipment</span></h3>
+          <div id="toolList"><div class="empty">None detected yet…</div></div>
+        </div>
+        <div class="panel-section">
+          <h3><span class="pdot" style="background:var(--measure)"></span><span id="secTitleItems">Ingredients &amp; Quantities</span></h3>
+          <div id="measureList"><div class="empty">None detected yet…</div></div>
+        </div>
+        <div class="panel-section">
+          <h3><span class="pdot" style="background:var(--tech-color)"></span>Techniques &amp; Safety</h3>
+          <div id="techList"><div class="empty">None detected yet…</div></div>
+        </div>
+      </div>
+
+      <div id="overheadBox">
+        <h3>Overhead Feed</h3>
+        <canvas id="overheadCanvas"></canvas>
+      </div>
     </div>
   </div>
 </div>
-
-<canvas id="captureCanvas" width="1920" height="1080" style="display:none;"></canvas>
 
 <div id="export-overlay">
   <div id="export-box">
@@ -173,71 +210,44 @@
   </div>
 </div>
 
+<script id="dict-cooking" type="application/json">
+{
+  "tools": ["chef's knife","chefs knife","cook's knife","chopping knife","french knife","paring knife","peeling knife","bread knife","serrated knife","boning knife","filleting knife","carving knife","santoku knife","utility knife","cleaver","kitchen shears","kitchen scissors","mandoline","mandolin","peeler","vegetable peeler","y-peeler","zester","microplane","grater","box grater","cheese grater","cutting board","chopping board","pizza cutter","apple corer","melon baller","egg slicer","knife sharpener","sharpening steel","whetstone","mixing bowl","whisk","balloon whisk","wooden spoon","spatula","silicone spatula","turner","fish slice","egg flip","tongs","kitchen tongs","ladle","slotted spoon","sieve","strainer","sifter","flour sifter","colander","measuring cups","measuring cup","measuring jug","measuring spoons","measuring spoon","rolling pin","pastry brush","basting brush","pastry cutter","bench scraper","dough scraper","funnel","kitchen scale","digital scale","mortar and pestle","can opener","tin opener","bottle opener","corkscrew","garlic press","garlic crusher","potato masher","masher","juicer","citrus juicer","salad spinner","piping bag","piping nozzle","cooling rack","wire rack","timer","kitchen timer","meat thermometer","food thermometer","probe thermometer","candy thermometer","pastry blender","dough hook","spider skimmer","kitchen twine","meat mallet","saucepan","pot","frying pan","skillet","frypan","non-stick pan","wok","stockpot","griddle pan","casserole dish","dutch oven","roasting pan","baking tray","baking sheet","sheet pan","oven tray","baking dish","muffin tin","cake tin","cake pan","loaf tin","springform pan","pie dish","steamer basket","bamboo steamer","double boiler","bain marie","pressure cooker","ramekin","oven","stove","stovetop","cooktop","induction cooktop","microwave","blender","food processor","stand mixer","kitchenaid","hand mixer","electric beaters","immersion blender","stick blender","toaster","kettle","slow cooker","air fryer","rice cooker","deep fryer","sandwich press","jaffle iron","sous vide machine","vacuum sealer","cling wrap","aluminium foil","tin foil","baking paper","parchment paper","zip lock bag","oven mitt","apron","tea towel"],
+  "materials": ["dough","flour","plain flour","self-raising flour","wholemeal flour","bread flour","cornflour","cornstarch","water","sparkling water","onion","garlic","ginger","potato","sweet potato","carrot","celery","capsicum","bell pepper","tomato","cherry tomato","cucumber","zucchini","eggplant","pumpkin","broccoli","broccolini","cauliflower","cabbage","lettuce","spinach","kale","silverbeet","spring onion","shallot","leek","mushroom","sweetcorn","peas","green beans","asparagus","brussels sprouts","beetroot","radish","chilli","jalapeno","avocado","bok choy","fennel","rocket","arugula","apple","banana","orange","lemon","lime","strawberry","blueberry","raspberry","grape","watermelon","pineapple","mango","peach","plum","pear","kiwifruit","passionfruit","fig","apricot","cherry","dates","raisins","sultanas","coconut","beef","lamb","pork","chicken","turkey","duck","bacon","ham","sausage","mince","ground beef","steak","rump steak","sirloin","chicken breast","chicken thigh","pork chop","pork belly","lamb chop","lamb shank","beef brisket","salami","prosciutto","chorizo","fish","salmon","tuna","barramundi","snapper","cod","prawns","shrimp","crab","lobster","mussels","oysters","squid","calamari","octopus","scallops","milk","cream","thickened cream","sour cream","butter","unsalted butter","salted butter","margarine","cheese","cheddar","mozzarella","parmesan","feta","ricotta","haloumi","brie","cream cheese","yoghurt","ghee","egg","eggs","egg white","egg yolk","rice","basmati rice","jasmine rice","brown rice","arborio rice","pasta","spaghetti","penne","fettuccine","macaroni","lasagne sheets","gnocchi","noodles","bread","sourdough","breadcrumbs","panko breadcrumbs","oats","quinoa","couscous","pastry","puff pastry","shortcrust pastry","chickpeas","lentils","kidney beans","black beans","tofu","almonds","cashews","walnuts","peanuts","sesame seeds","chia seeds","pumpkin seeds","salt","sea salt","pepper","black pepper","white pepper","paprika","smoked paprika","cumin","coriander seed","turmeric","cinnamon","nutmeg","garlic powder","onion powder","basil","oregano","thyme","rosemary","parsley","mint","coriander","dill","bay leaf","chives","vanilla extract","curry powder","soy sauce","fish sauce","oyster sauce","tomato sauce","ketchup","mustard","dijon mustard","mayonnaise","aioli","vinegar","balsamic vinegar","white vinegar","apple cider vinegar","olive oil","extra virgin olive oil","vegetable oil","canola oil","sesame oil","honey","maple syrup","peanut butter","chilli sauce","sriracha","pesto","tomato paste","passata","stock","chicken stock","beef stock","vegetable stock","sugar","white sugar","caster sugar","brown sugar","icing sugar","raw sugar","baking powder","baking soda","bicarbonate of soda","yeast","cocoa powder","chocolate","dark chocolate","white chocolate","wine","red wine","white wine","juice","orange juice","lemon juice","lime juice"],
+  "descriptors": ["roughly chopped","finely chopped","diced","minced","sliced","thinly sliced","thick cut","crushed","peeled","grated","shredded","julienned","sifted","whisked","melted","softened","chilled","room temperature","cold","warm","hot","boiling","frozen","beaten","toasted","roasted","drained","rinsed","cooked","raw","fresh","dried","ground","cracked","whole","halved","quartered","seeded","de-seeded","trimmed","cubed","pureed"]
+}
+</script>
+
+<script id="dict-timber" type="application/json">
+{
+  "tools": ["tape measure","steel rule","combination square","try square","speed square","sliding bevel","marking gauge","mortise gauge","marking knife","carpenter's pencil","chalk line","spirit level","laser level","compass","protractor","callipers","depth gauge","handsaw","hand saw","panel saw","rip saw","crosscut saw","tenon saw","back saw","dovetail saw","coping saw","fret saw","hacksaw","japanese pull saw","pull saw","ryoba saw","chisel","wood chisel","firmer chisel","mortise chisel","gouge","hand plane","bench plane","block plane","jack plane","smoothing plane","spokeshave","rasp","wood rasp","file","metal file","surform","utility knife","stanley knife","hand drill","brace and bit","bradawl","gimlet","auger bit","countersink","claw hammer","hammer","wooden mallet","mallet","nail punch","nail set","screwdriver","flathead screwdriver","phillips screwdriver","pincers","g-clamp","c-clamp","f-clamp","bar clamp","sash clamp","spring clamp","quick release clamp","bench vice","vice","workbench","sawhorse","sandpaper","sanding block","steel wool","cabinet scraper","putty knife","power drill","cordless drill","impact driver","hammer drill","circular saw","jigsaw","reciprocating saw","multi tool","router","plunge router","trim router","biscuit joiner","pocket hole jig","kreg jig","orbital sander","belt sander","detail sander","power planer","angle grinder","nail gun","brad nailer","heat gun","hot glue gun","table saw","bandsaw","mitre saw","chop saw","drop saw","drill press","wood lathe","lathe","thicknesser","jointer","surface planer","spindle moulder","router table","scroll saw","dust extractor","cnc router","laser cutter","disc sander","linisher","drill bit","forstner bit","hole saw","saw blade","router bit","push stick","featherboard"],
+  "materials": ["pine","radiata pine","douglas fir","cedar","western red cedar","cypress","hoop pine","blackwood","jarrah","tasmanian oak","victorian ash","spotted gum","blackbutt","messmate","red gum","ironbark","oak","american white oak","maple","walnut","mahogany","teak","beech","cherry","ash","birch","balsa","meranti","plywood","marine plywood","structural plywood","mdf","particleboard","chipboard","melamine board","formply","osb","hardboard","masonite","dowel rod","timber veneer","glulam","timber batten","dressed timber","rough sawn timber","dar timber","nail","bullet head nail","flat head nail","clout nail","panel pin","brad nail","screw","wood screw","chipboard screw","decking screw","batten screw","coach screw","drywall screw","bolt","coach bolt","carriage bolt","hex bolt","threaded rod","nut","hex nut","lock nut","washer","flat washer","dowel","fluted dowel","bracket","angle bracket","pocket screw","biscuit","butt hinge","piano hinge","concealed hinge","cabinet hinge","drawer slide","drawer runner","door catch","magnetic catch","shelf pin","cabinet handle","pva glue","yellow glue","wood glue","waterproof pva","hide glue","epoxy resin","two-part epoxy","polyurethane glue","gorilla glue","super glue","contact adhesive","liquid nails","wood filler","putty","sanding sealer","grain filler","wood stain","varnish","polyurethane varnish","lacquer","shellac","french polish","danish oil","tung oil","linseed oil","teak oil","hard wax oil","primer","undercoat","enamel paint","acrylic paint","decking oil","sandpaper","tack cloth"],
+  "descriptors": ["rough sawn","dressed all round","dar","kiln dried","air dried","seasoned","green","warped","cupped","bowed","twisted","sanded","dimensioned","squared","chamfered","rebated","routed","mitred","bevelled","drilled","countersunk","counterbored","plugged","dowelled","mortised","tenoned","dry fitted","glued","clamped","stained","sealed","varnished","waxed"]
+}
+</script>
+
+<script id="dict-textiles" type="application/json">
+{
+  "tools": ["dressmaking shears","fabric scissors","sewing shears","pinking shears","embroidery scissors","snips","thread snips","paper scissors","rotary cutter","cutting mat","self-healing mat","seam ripper","stitch unpicker","unpicker","buttonhole cutter","pattern weights","craft knife","tape measure","measuring tape","sewing ruler","quilting ruler","french curve","hip curve","hem gauge","sewing gauge","tailor's chalk","tailors chalk","fabric marking pen","tracing wheel","carbon tracing paper","pattern master","protractor","seam gauge","hand sewing needle","sewing needle","embroidery needle","tapestry needle","beading needle","darning needle","needle threader","thimble","pincushion","pin cushion","dressmaker pins","straight pins","safety pins","bodkin","awl","iron","steam iron","ironing board","pressing cloth","tailor's ham","pressing ham","sleeve board","point presser","seam roll","spray bottle","wooden clapper","garment steamer","dress form","mannequin","loop turner","point turner","bias tape maker","wonder clips","hem clips","sewing clips","magnetic pin dish","walking foot","zipper foot","buttonhole foot","rolled hem foot","sewing machine","domestic sewing machine","overlocker","serger","coverstitch machine","embroidery machine","quilting machine","heat press","laser cutter","bobbin","bobbin case","presser foot","feed dogs","needle plate","tension dial","stitch length dial","hand wheel","foot pedal","thread guide","take-up lever","sewing machine needle","crochet hook","knitting needle","weaving loom","loom","shuttle"],
+  "materials": ["cotton","poplin","calico","muslin","cheesecloth","denim","chambray","canvas","drill","corduroy","linen","hemp","jute","bamboo fabric","wool","merino wool","lambswool","cashmere","alpaca","silk","felt","leather","suede","viscose","rayon","modal","tencel","bamboo viscose","acetate","polyester","nylon","acrylic","spandex","elastane","lycra","microfibre","neoprene","vinyl","flannel","chiffon","organza","satin","sateen","velvet","jersey","interlock","rib knit","french terry","fleece","ponte","tulle","netting","lace","interfacing","fusible interfacing","sew-in interfacing","wadding","batting","quilt batting","lining fabric","bias binding","bias tape","all-purpose thread","cotton thread","polyester thread","silk thread","embroidery thread","topstitching thread","elastic thread","button","shank button","snap fastener","press stud","hook and eye","hook and bar","zipper","invisible zip","metal zip","plastic zip","velcro","hook and loop tape","eyelets","grommets","d-rings","buckles","elastic","braided elastic","elastic cord","piping cord","piping","ribbon","satin ribbon","grosgrain ribbon","rickrack","lace trim","fringe trim","drawcord","yarn","wool yarn","cotton yarn","acrylic yarn"],
+  "descriptors": ["folded","cut on the fold","bias cut","straight grain","cross grain","pinned","basted","tacked","staystitched","interfaced","pressed open","pressed to one side","gathered","pleated","notched","clipped","graded","understitched","topstitched","edgestitched","hemmed","rolled","bound","ironed","steam pressed","reinforced"]
+}
+</script>
+
 <script>
-(function(){
-  // Configuration
-  const SHOW_LIVE_CAPTIONS = false;
-  const FOCUS_MAJOR = 65; 
-  const FOCUS_MINOR = 35;
+(function() {
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwm_WKuPkjb2oRPqRIK6GqYDQ4A1n1kFmK4vv9sJe2hagdmBnr14K8bW4kcnSNdz7TX7Q/exec";
+  const AI_BATCH_INTERVAL_MS = 10000;
 
-  let streamA = null, streamB = null;
-  let mediaRecorder = null, recordedChunks = [];
-  let currentZoom = { A: 1, B: 1 };
-  let mirrored = { A: false, B: false };
-  let flipped = { A: false, B: false };
-  let frozen = { A: false, B: false };
-  let frozenCanvas = { A: document.createElement('canvas'), B: document.createElement('canvas') };
-  let focused = 'A';
-  let dualActive = false;
-  let recognizer = null;
-  let sessionStartTime = null;
-  let transcriptLog = [];
-  let captureRAF = null;
+  const DICTS = {
+    cooking: JSON.parse(document.getElementById('dict-cooking').textContent),
+    timber: JSON.parse(document.getElementById('dict-timber').textContent),
+    textiles: JSON.parse(document.getElementById('dict-textiles').textContent)
+  };
 
-  const videoA = document.getElementById('videoA');
-  const videoB = document.getElementById('videoB');
-  const wrapA = document.getElementById('wrapA');
-  const wrapB = document.getElementById('wrapB');
-  const statusDot = document.getElementById('status-dot');
-  const cameraSelectA = document.getElementById('cameraSelectA');
-  const cameraSelectB = document.getElementById('cameraSelectB');
-  const mirrorBtn = document.getElementById('mirrorBtn');
-  const flipBtn = document.getElementById('flipBtn');
-  const freezeBtn = document.getElementById('freezeBtn');
-  const resetZoomBtn = document.getElementById('resetZoomBtn');
-  const finishBtn = document.getElementById('finishBtn');
-  const freezeOverlay = document.getElementById('freeze-overlay');
-  const zoomIndicator = document.getElementById('zoom-indicator');
-  const flipIndicator = document.getElementById('flip-indicator');
-  const currentCaption = document.getElementById('current-caption');
-  const badgeRow = document.getElementById('badge-row');
-  const historyStrip = document.getElementById('history-strip');
-  const captionZone = document.getElementById('caption-zone');
-  const listeningIndicator = document.getElementById('listening-indicator');
-  const captureCanvas = document.getElementById('captureCanvas');
-  const captureCtx = captureCanvas.getContext('2d');
-  const exportOverlay = document.getElementById('export-overlay');
-  const exportStatus = document.getElementById('export-status');
-  const exportLinks = document.getElementById('export-links');
-  const spinner = document.getElementById('spinner');
-  const closeExportBtn = document.getElementById('closeExport');
-  const errorToast = document.getElementById('error-toast');
+  const MEASUREMENT_REGEX = /\b(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?(?:g|kg|grams?|kilos?|kilograms?|mg|milligrams?|ml|mL|l|L|litres?|liters?|cups?|tbsp|tsp|teaspoons?|tablespoons?|dsp|dessertspoons?|degrees?|°[CF]?|celsius|fahrenheit|mm|millimetres?|cm|centimetres?|m|metres?|meters?|inches?|inch|"|feet|ft|gsm|minutes?|mins?|seconds?|secs?|hours?|hrs?|pinch(?:es)?|dash(?:es)?|drop(?:s)?|glug(?:s)?|handful(?:s)?|cloves?|bunches?|sprigs?|sticks?|heads?|slices?|pieces?|wedges?|sheets?|knobs?)\b/gi;
+  const COUNT_PREFIX_REGEX = /^(?:(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(?:x\s*)?|(?:a\s+|one\s+|two\s+|three\s+|four\s+|five\s+|six\s+|seven\s+|eight\s+|nine\s+|ten\s+|half\s+a\s+|a\s+quarter\s+of\s+a\s+|a\s+pair\s+of\s+|a\s+dozen\s+|a\s+handful\s+of\s+|a\s+pinch\s+of\s+|a\s+dash\s+of\s+|a\s+glug\s+of\s+|a\s+clove\s+of\s+|a\s+head\s+of\s+|a\s+sprig\s+of\s+|a\s+stick\s+of\s+|a\s+piece\s+of\s+|a\s+slice\s+of\s+))/i;
 
-  if (SHOW_LIVE_CAPTIONS) {
-    captionZone.style.display = 'flex';
-    listeningIndicator.style.display = 'none';
-  } else {
-    captionZone.style.display = 'none';
-    listeningIndicator.style.display = 'flex';
-  }
-
-  function showToast(msg) {
-    errorToast.textContent = msg;
-    errorToast.style.display = 'block';
-    setTimeout(() => { errorToast.style.display = 'none'; }, 4000);
-  }
-
-  // NLP Heuristics
   const STEP_PATTERNS = [
     /^\s*first\b/i, /^\s*next\b/i, /^\s*then\b/i, /^\s*after that\b/i,
     /^\s*now we\b/i, /^\s*step\s*\d+/i, /^\s*finally\b/i, /^\s*once .*then\b/i,
@@ -246,8 +256,105 @@
   const TECHNIQUE_PATTERNS = [
     /technique\s*:/i, /make sure to/i, /notice how/i, /hold the blade/i,
     /ensure the temperature/i, /be careful/i, /safety (tip|first)/i,
-    /the key (is|here)/i, /important to/i, /watch (out|your)/i, /never/i, /always/i
+    /the key (is|here)/i, /important to/i, /watch (out|your)/i, /never/i, /always/i,
+    /remember to/i, /keep your fingers/i, /apply even pressure/i
   ];
+
+  let currentDomain = 'cooking';
+  let mainStream = null, overheadStream = null, overheadActive = false;
+  let mediaRecorder = null, recordedChunks = [];
+  let recordingEnabled = true, transcriptionEnabled = true, aiClassifyEnabled = true;
+  let currentZoom = 1, zoomOriginX = 0.5, zoomOriginY = 0.5;
+  let mirrored = false, flipped = false, frozen = false;
+  let recognizer = null, sessionStartTime = null;
+  let transcriptLog = [];
+  let pendingAiLines = [];
+  let aiBatchTimer = null;
+  let currentDevices = [];
+  let displayRafId = null, recordRafId = null, overheadRafId = null;
+  let thumbnailBase64 = null;
+
+  const toolRegistry = new Map();
+  const itemRegistry = new Map();
+  const techRegistry = new Map();
+
+  const mainVideo = document.getElementById('video');
+  const overheadVideo = document.getElementById('overheadVideo');
+  const displayCanvas = document.getElementById('stageCanvas');
+  const displayCtx = displayCanvas.getContext('2d');
+  const overheadCanvas = document.getElementById('overheadCanvas');
+  const overheadCtx = overheadCanvas.getContext('2d');
+  const mainCol = document.getElementById('mainCol');
+
+  const recordCanvas = document.createElement('canvas');
+  const recordCtx = recordCanvas.getContext('2d');
+  recordCanvas.width = 1920; recordCanvas.height = 1080;
+
+  const statusDot = document.getElementById('status-dot');
+  const titleInput = document.getElementById('titleInput');
+  const domainSelect = document.getElementById('domainSelect');
+  const focusLabel = document.getElementById('focusLabel');
+  const aiStatus = document.getElementById('aiStatus');
+  const secTitleTools = document.getElementById('secTitleTools');
+  const secTitleItems = document.getElementById('secTitleItems');
+  const cameraSelect = document.getElementById('cameraSelect');
+  const overheadBtn = document.getElementById('overheadBtn');
+  const overheadSelect = document.getElementById('overheadSelect');
+  const overheadBox = document.getElementById('overheadBox');
+  const mirrorBtn = document.getElementById('mirrorBtn');
+  const flipBtn = document.getElementById('flipBtn');
+  const freezeBtn = document.getElementById('freezeBtn');
+  const resetZoomBtn = document.getElementById('resetZoomBtn');
+  const newSessionBtn = document.getElementById('newSessionBtn');
+  const finishBtn = document.getElementById('finishBtn');
+  const freezeOverlay = document.getElementById('freeze-overlay');
+  const zoomIndicator = document.getElementById('zoom-indicator');
+  const flipIndicator = document.getElementById('flip-indicator');
+  const modeText = document.getElementById('modeText');
+  const recordToggle = document.getElementById('recordToggle');
+  const transcribeToggle = document.getElementById('transcribeToggle');
+  const aiToggle = document.getElementById('aiToggle');
+  const recordWrap = document.getElementById('recordWrap');
+  const transcribeWrap = document.getElementById('transcribeWrap');
+  const aiWrap = document.getElementById('aiWrap');
+  const toolList = document.getElementById('toolList');
+  const measureList = document.getElementById('measureList');
+  const techList = document.getElementById('techList');
+
+  const exportOverlay = document.getElementById('export-overlay');
+  const exportStatus = document.getElementById('export-status');
+  const exportLinks = document.getElementById('export-links');
+  const spinner = document.getElementById('spinner');
+  const closeExportBtn = document.getElementById('closeExport');
+
+  function updateModeText() {
+    const parts = [];
+    if (recordingEnabled) parts.push('Recording');
+    if (transcriptionEnabled) parts.push('Transcribing');
+    if (transcriptionEnabled && aiClassifyEnabled) parts.push('AI');
+    modeText.textContent = parts.length > 0 ? parts.join(' + ') : 'Display only';
+  }
+
+  function updateDomainLabels() {
+    currentDomain = domainSelect.value;
+    if (currentDomain === 'cooking') {
+      secTitleTools.textContent = 'Kitchen Tools';
+      secTitleItems.textContent = 'Ingredients & Quantities';
+    } else if (currentDomain === 'timber') {
+      secTitleTools.textContent = 'Workshop Tools';
+      secTitleItems.textContent = 'Materials & Dimensions';
+    } else if (currentDomain === 'textiles') {
+      secTitleTools.textContent = 'Sewing & Textile Tools';
+      secTitleItems.textContent = 'Fabrics & Notions';
+    }
+  }
+  domainSelect.addEventListener('change', updateDomainLabels);
+  updateDomainLabels();
+
+  titleInput.addEventListener('input', () => {
+    const val = titleInput.value.trim();
+    focusLabel.textContent = val.length > 0 ? val : 'Untitled';
+  });
 
   function classify(text) {
     for (const p of STEP_PATTERNS) if (p.test(text)) return "STEP";
@@ -264,228 +371,430 @@
     return `${hh}:${mm}:${ss}`;
   }
 
-  // Device Enumeration
-  async function enumerateCameras() {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const cams = devices.filter(d => d.kind === 'videoinput');
+  function createChipElement(text, cssClass) {
+    const chip = document.createElement('div');
+    chip.className = 'chip ' + cssClass;
+    const span = document.createElement('span');
+    span.textContent = text;
+    const time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = elapsedTimeStr();
+    chip.appendChild(span);
+    chip.appendChild(time);
+    return chip;
+  }
 
-      const currentSelA = cameraSelectA.value;
-      const currentSelB = cameraSelectB.value;
+  function flashPulse(el, aiSourced) {
+    el.classList.add(aiSourced ? 'ai-pulse' : 'pulse');
+    setTimeout(() => el.classList.remove(aiSourced ? 'ai-pulse' : 'pulse'), 600);
+  }
 
-      cameraSelectA.innerHTML = '';
-      cameraSelectB.innerHTML = '<option value="">None (Single Feed)</option>';
-
-      cams.forEach((d, i) => {
-        const label = d.label || `Camera ${i + 1} (${d.deviceId.slice(0, 5)}…)`;
-        const optA = document.createElement('option');
-        optA.value = d.deviceId;
-        optA.textContent = label;
-        if (d.deviceId === currentSelA) optA.selected = true;
-        cameraSelectA.appendChild(optA);
-
-        const optB = document.createElement('option');
-        optB.value = d.deviceId;
-        optB.textContent = label;
-        if (d.deviceId === currentSelB) optB.selected = true;
-        cameraSelectB.appendChild(optB);
-      });
-    } catch (e) {
-      console.warn("Camera enumeration error:", e);
+  function upsertChip(registry, key, container, phrase, cssClass, aiSourced) {
+    const normKey = key.toLowerCase().trim();
+    if (registry.has(normKey)) {
+      const entry = registry.get(normKey);
+      entry.text = phrase;
+      entry.el.querySelector('span').textContent = phrase;
+      entry.el.querySelector('.time').textContent = elapsedTimeStr();
+      flashPulse(entry.el, aiSourced);
+    } else {
+      if (container.querySelector('.empty')) container.innerHTML = '';
+      const el = createChipElement(phrase, cssClass);
+      container.appendChild(el);
+      registry.set(normKey, { text: phrase, el: el });
+      flashPulse(el, aiSourced);
     }
   }
 
-  // Hotplug listener: Auto-refresh list when an external camera is plugged in/out
+  function rebuildListFromAiState(container, registry, items, cssClass) {
+    container.innerHTML = '';
+    registry.clear();
+    if (!items || items.length === 0) {
+      container.innerHTML = '<div class="empty">None detected yet…</div>';
+      return;
+    }
+    items.forEach(text => {
+      const el = createChipElement(text, cssClass);
+      container.appendChild(el);
+      flashPulse(el, true);
+      registry.set(text.toLowerCase().trim(), { text: text, el: el });
+    });
+  }
+
+  function findDictMatch(textLower, dictArray) {
+    let longest = null;
+    dictArray.forEach(term => {
+      const re = new RegExp('\\b' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+      if (re.test(textLower)) {
+        if (!longest || term.length > longest.length) longest = term;
+      }
+    });
+    return longest;
+  }
+
+  function findDescriptors(textLower, descriptorsArray) {
+    const matches = [];
+    descriptorsArray.forEach(d => {
+      const re = new RegExp('\\b' + d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+      if (re.test(textLower)) matches.push(d);
+    });
+    return matches;
+  }
+
+  function extractCategoriesLocal(text) {
+    const lower = text.toLowerCase();
+    const dict = DICTS[currentDomain] || DICTS.cooking;
+
+    const matchedTool = findDictMatch(lower, dict.tools);
+    if (matchedTool) {
+      upsertChip(toolRegistry, matchedTool, toolList, matchedTool, 'tool', false);
+    }
+
+    const matchedMaterial = findDictMatch(lower, dict.materials);
+    const measureMatches = text.match(MEASUREMENT_REGEX);
+    const descriptors = findDescriptors(lower, dict.descriptors || []);
+
+    if (matchedMaterial) {
+      let fullPhrase = '';
+      if (measureMatches && measureMatches.length > 0) {
+        const qty = measureMatches[0].trim();
+        const descStr = descriptors.length > 0 ? descriptors.join(' ') + ' ' : '';
+        fullPhrase = `${qty} of ${descStr}${matchedMaterial}`;
+      } else {
+        const countMatch = lower.match(COUNT_PREFIX_REGEX);
+        if (countMatch) {
+          const countPrefix = countMatch[0].trim();
+          const descStr = descriptors.length > 0 ? descriptors.join(' ') + ' ' : '';
+          fullPhrase = `${countPrefix} ${descStr}${matchedMaterial}`.replace(/\s+/g, ' ');
+        } else if (descriptors.length > 0) {
+          fullPhrase = `${descriptors.join(' ')} ${matchedMaterial}`;
+        } else {
+          fullPhrase = matchedMaterial;
+        }
+      }
+      upsertChip(itemRegistry, matchedMaterial, measureList, fullPhrase, 'measure', false);
+    }
+  }
+
+  function queueForAiClassification(entry) {
+    if (!aiClassifyEnabled) return;
+    pendingAiLines.push(entry);
+  }
+
+  async function postApi(payload) {
+    const resp = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'cors',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return await resp.json();
+  }
+
+  async function runAiClassificationBatch() {
+    if (!aiClassifyEnabled || pendingAiLines.length === 0 || !APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PASTE_YOUR') !== -1) return;
+    const batch = pendingAiLines;
+    pendingAiLines = [];
+    aiStatus.style.display = 'flex';
+    try {
+      const result = await postApi({ action: 'classifyTranscript', lines: batch, domain: currentDomain });
+      if (result.success) {
+        rebuildListFromAiState(toolList, toolRegistry, result.tools || [], 'tool');
+        rebuildListFromAiState(measureList, itemRegistry, result.ingredients || [], 'measure');
+        rebuildListFromAiState(techList, techRegistry, result.techniques || [], 'tech');
+      }
+    } catch (err) {
+      console.warn('AI batch skipped/failed:', err.message);
+    } finally {
+      aiStatus.style.display = 'none';
+    }
+  }
+
+  function startAiBatchTimer() {
+    if (aiBatchTimer) return;
+    aiBatchTimer = setInterval(runAiClassificationBatch, AI_BATCH_INTERVAL_MS);
+  }
+  function stopAiBatchTimer() {
+    if (aiBatchTimer) { clearInterval(aiBatchTimer); aiBatchTimer = null; }
+    pendingAiLines = [];
+    aiStatus.style.display = 'none';
+  }
+
+  async function resetPersistedState() {
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PASTE_YOUR') !== -1) return;
+    try {
+      await postApi({ action: 'resetSessionState' });
+      rebuildListFromAiState(toolList, toolRegistry, [], 'tool');
+      rebuildListFromAiState(measureList, itemRegistry, [], 'measure');
+      rebuildListFromAiState(techList, techRegistry, [], 'tech');
+    } catch (err) {
+      console.warn('Reset failed:', err.message);
+    }
+  }
+
+  newSessionBtn.addEventListener('click', () => {
+    if (confirm('Start a fresh session? This clears the current memory in Google Sheets.')) {
+      resetPersistedState();
+    }
+  });
+
+  aiToggle.addEventListener('change', () => {
+    aiClassifyEnabled = aiToggle.checked;
+    aiWrap.classList.toggle('on', aiClassifyEnabled);
+    if (aiClassifyEnabled) startAiBatchTimer(); else stopAiBatchTimer();
+    updateModeText();
+  });
+
+  function resizeCanvases() {
+    const rect = mainCol.getBoundingClientRect();
+    displayCanvas.width = rect.width;
+    displayCanvas.height = rect.height;
+    const obRect = overheadCanvas.getBoundingClientRect();
+    overheadCanvas.width = obRect.width || 300;
+    overheadCanvas.height = obRect.height || 169;
+  }
+  window.addEventListener('resize', resizeCanvases);
+
+  function drawContain(targetCtx, videoEl, tx, ty, tw, th) {
+    const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+    if (!vw || !vh) return;
+    const scale = Math.min(tw / vw, th / vh);
+    const dw = vw * scale, dh = vh * scale;
+    const dx = tx + (tw - dw) / 2, dy = ty + (th - dh) / 2;
+    targetCtx.drawImage(videoEl, dx, dy, dw, dh);
+  }
+
+  function drawMainFeed(targetCtx, x, y, w, h) {
+    targetCtx.save();
+    targetCtx.beginPath();
+    targetCtx.rect(x, y, w, h);
+    targetCtx.clip();
+    targetCtx.fillStyle = '#000';
+    targetCtx.fillRect(x, y, w, h);
+    const originXpx = x + zoomOriginX * w, originYpx = y + zoomOriginY * h;
+    targetCtx.translate(originXpx, originYpx);
+    if (flipped) targetCtx.rotate(Math.PI);
+    if (mirrored) targetCtx.scale(-1, 1);
+    targetCtx.scale(currentZoom, currentZoom);
+    targetCtx.translate(-originXpx, -originYpx);
+    drawContain(targetCtx, mainVideo, x, y, w, h);
+    targetCtx.restore();
+  }
+
+  function renderDisplayFrame() {
+    if (!frozen) drawMainFeed(displayCtx, 0, 0, displayCanvas.width, displayCanvas.height);
+    displayRafId = requestAnimationFrame(renderDisplayFrame);
+  }
+
+  function renderOverheadFrame() {
+    if (overheadActive && overheadVideo.videoWidth) {
+      overheadCtx.fillStyle = '#000';
+      overheadCtx.fillRect(0, 0, overheadCanvas.width, overheadCanvas.height);
+      drawContain(overheadCtx, overheadVideo, 0, 0, overheadCanvas.width, overheadCanvas.height);
+    }
+    overheadRafId = requestAnimationFrame(renderOverheadFrame);
+  }
+
+  function renderRecordFrame() {
+    if (!frozen) {
+      recordCtx.fillStyle = '#000';
+      recordCtx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
+      if (overheadActive && overheadVideo.videoWidth) {
+        const mainW = recordCanvas.width * 0.72;
+        const overheadW = recordCanvas.width - mainW;
+        drawMainFeed(recordCtx, 0, 0, mainW, recordCanvas.height);
+        recordCtx.save();
+        recordCtx.fillStyle = '#000';
+        recordCtx.fillRect(mainW, 0, overheadW, recordCanvas.height);
+        drawContain(recordCtx, overheadVideo, mainW + 8, 8, overheadW - 16, recordCanvas.height - 16);
+        recordCtx.strokeStyle = '#ffb84d';
+        recordCtx.lineWidth = 4;
+        recordCtx.strokeRect(mainW + 4, 4, overheadW - 8, recordCanvas.height - 8);
+        recordCtx.restore();
+      } else {
+        drawMainFeed(recordCtx, 0, 0, recordCanvas.width, recordCanvas.height);
+      }
+    }
+    recordRafId = requestAnimationFrame(renderRecordFrame);
+  }
+
+  function startRecorder() {
+    if (!mainStream) return;
+    const canvasStream = recordCanvas.captureStream(30);
+    const audioTrack = mainStream.getAudioTracks()[0];
+    if (audioTrack) canvasStream.addTrack(audioTrack);
+
+    let mimeType = 'video/webm;codecs=vp9,opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+    try { mediaRecorder = new MediaRecorder(canvasStream, { mimeType }); }
+    catch (e) { mediaRecorder = new MediaRecorder(canvasStream); }
+
+    recordedChunks = [];
+    mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.start(1000);
+    if (!sessionStartTime) sessionStartTime = Date.now();
+  }
+
+  function stopRecorderSilently() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.onstop = null;
+      try { mediaRecorder.stop(); } catch (e) {}
+    }
+    mediaRecorder = null;
+    recordedChunks = [];
+  }
+
+  recordToggle.addEventListener('change', () => {
+    recordingEnabled = recordToggle.checked;
+    recordWrap.classList.toggle('on', recordingEnabled);
+    if (recordingEnabled) {
+      if (!mediaRecorder && mainStream) startRecorder();
+    } else {
+      stopRecorderSilently();
+    }
+    updateModeText();
+  });
+
+  transcribeToggle.addEventListener('change', () => {
+    transcriptionEnabled = transcribeToggle.checked;
+    transcribeWrap.classList.toggle('on', transcriptionEnabled);
+    if (transcriptionEnabled) {
+      if (!recognizer) initSpeech();
+      else { try { recognizer.start(); } catch (e) {} }
+      if (aiClassifyEnabled) startAiBatchTimer();
+    } else {
+      if (recognizer) { try { recognizer.stop(); } catch (e) {} }
+      stopAiBatchTimer();
+    }
+    updateModeText();
+  });
+
+  async function getStreamAdaptive(deviceId, isAudio) {
+    const videoConstraint = deviceId ? { deviceId: { exact: deviceId } } : true;
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: deviceId
+          ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+          : { width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: isAudio
+      });
+    } catch (err) {
+      return await navigator.mediaDevices.getUserMedia({
+        video: videoConstraint,
+        audio: isAudio
+      });
+    }
+  }
+
+  async function initMainMedia(deviceId) {
+    if (mainStream) mainStream.getTracks().forEach(t => t.stop());
+    try {
+      mainStream = await getStreamAdaptive(deviceId, true);
+    } catch (e) {
+      mainStream = await getStreamAdaptive(deviceId, false);
+    }
+    mainVideo.srcObject = mainStream;
+    statusDot.classList.add('live');
+
+    if (!displayRafId) {
+      resizeCanvases();
+      renderDisplayFrame();
+      renderRecordFrame();
+      renderOverheadFrame();
+    }
+    if (recordingEnabled && !mediaRecorder) startRecorder();
+    if (transcriptionEnabled && !recognizer) initSpeech();
+    if (transcriptionEnabled && aiClassifyEnabled) startAiBatchTimer();
+    updateModeText();
+  }
+
+  async function enumerateCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    currentDevices = devices.filter(d => d.kind === 'videoinput');
+    [cameraSelect, overheadSelect].forEach(sel => {
+      const keepFirst = sel.id === 'overheadSelect' ? '<option value="">Choose overhead camera…</option>' : '';
+      sel.innerHTML = keepFirst;
+      currentDevices.forEach((d, i) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || `Camera ${i + 1}`;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
     navigator.mediaDevices.addEventListener('devicechange', async () => {
-      console.log("Hardware change detected, updating camera list...");
       await enumerateCameras();
     });
   }
 
-  // Flexible stream requester (prevents OverconstrainedError on non-1080p cams)
-  async function acquireStream(deviceId, withAudio) {
-    const videoConstraints = deviceId ? { deviceId: { exact: deviceId } } : true;
-
-    try {
-      // First attempt: High resolution (1080p ideal)
-      return await navigator.mediaDevices.getUserMedia({
-        video: deviceId 
-          ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-          : { width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: withAudio
-      });
-    } catch (e) {
-      console.warn("1080p request failed. Falling back to default camera resolution:", e.name);
-      // Second attempt: Fallback to basic device stream
-      return await navigator.mediaDevices.getUserMedia({
-        video: videoConstraints,
-        audio: withAudio
-      });
-    }
-  }
-
-  async function initFeedA(deviceId) {
-    if (streamA) streamA.getTracks().forEach(t => t.stop());
-    try {
-      streamA = await acquireStream(deviceId, true);
-    } catch (err) {
-      console.warn("Feed A audio failed, trying video only:", err);
-      streamA = await acquireStream(deviceId, false);
-    }
-    videoA.srcObject = streamA;
-    statusDot.classList.add('live');
-  }
-
-  async function initFeedB(deviceId) {
-    if (streamB) {
-      streamB.getTracks().forEach(t => t.stop());
-      streamB = null;
-      videoB.srcObject = null;
-    }
-    if (!deviceId) {
-      dualActive = false;
-      applyLayout();
-      return;
-    }
-    try {
-      streamB = await acquireStream(deviceId, false);
-      videoB.srcObject = streamB;
-      dualActive = true;
-      applyLayout();
-    } catch (err) {
-      showToast("Could not open secondary camera: " + (err.message || err.name));
-      cameraSelectB.value = "";
-      dualActive = false;
-      applyLayout();
-    }
-  }
-
-  cameraSelectA.addEventListener('change', async (e) => {
-    try { await initFeedA(e.target.value); } 
-    catch(err) { showToast("Feed A error: " + err.message); }
+  cameraSelect.addEventListener('change', async (e) => {
+    try { await initMainMedia(e.target.value); } catch (err) {}
   });
 
-  cameraSelectB.addEventListener('change', async (e) => {
-    try { await initFeedB(e.target.value); } 
-    catch(err) { showToast("Feed B error: " + err.message); }
+  overheadBtn.addEventListener('click', () => {
+    if (!overheadActive) overheadSelect.style.display = 'inline-block';
+    else stopOverhead();
   });
 
-  // Dynamic Layout Switching
-  function applyLayout() {
-    if (!dualActive) {
-      wrapA.classList.remove('hidden');
-      wrapB.classList.add('hidden');
-      wrapA.style.flexBasis = '100%';
-      wrapB.style.flexBasis = '0%';
-      wrapA.classList.add('focused');
-      wrapB.classList.remove('focused');
-      return;
-    }
-    wrapA.classList.remove('hidden');
-    wrapB.classList.remove('hidden');
-    const aMajor = (focused === 'A');
-    wrapA.style.flexBasis = (aMajor ? FOCUS_MAJOR : FOCUS_MINOR) + '%';
-    wrapB.style.flexBasis = (aMajor ? FOCUS_MINOR : FOCUS_MAJOR) + '%';
-    wrapA.classList.toggle('focused', aMajor);
-    wrapB.classList.toggle('focused', !aMajor);
+  overheadSelect.addEventListener('change', async (e) => {
+    const deviceId = e.target.value;
+    if (!deviceId) return;
+    try {
+      overheadStream = await getStreamAdaptive(deviceId, false);
+      overheadVideo.srcObject = overheadStream;
+      overheadActive = true;
+      overheadBtn.textContent = 'Remove Overhead Feed';
+      overheadBtn.classList.add('active');
+      overheadBox.style.display = 'block';
+      overheadSelect.style.display = 'none';
+      resizeCanvases();
+    } catch (err) {}
+  });
+
+  function stopOverhead() {
+    if (overheadStream) overheadStream.getTracks().forEach(t => t.stop());
+    overheadStream = null; overheadActive = false;
+    overheadBtn.textContent = 'Add Overhead Feed';
+    overheadBtn.classList.remove('active');
+    overheadBox.style.display = 'none';
+    overheadSelect.style.display = 'none';
+    overheadSelect.value = '';
+    resizeCanvases();
   }
 
-  function setFocus(feed) {
-    if (!dualActive) return;
-    focused = feed;
-    applyLayout();
-    updateButtonIndicators();
-  }
-
-  wrapA.addEventListener('click', () => setFocus('A'));
-  wrapB.addEventListener('click', () => setFocus('B'));
-
-  // Video Transformations
-  videoA.addEventListener('dblclick', (e) => handleDblClick('A', e));
-  videoB.addEventListener('dblclick', (e) => handleDblClick('B', e));
-
-  function handleDblClick(feed, e) {
-    e.stopPropagation();
-    const vid = (feed === 'A') ? videoA : videoB;
-    const rect = vid.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    if (currentZoom[feed] === 1) {
-      vid.style.transformOrigin = `${x}% ${y}%`;
-      setZoom(feed, 2.5);
+  displayCanvas.addEventListener('dblclick', (e) => {
+    const rect = displayCanvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width, y = (e.clientY - rect.top) / rect.height;
+    if (currentZoom === 1) {
+      zoomOriginX = x; zoomOriginY = y; currentZoom = 2.5;
+      zoomIndicator.style.display = 'block';
     } else {
-      setZoom(feed, 1);
+      currentZoom = 1; zoomOriginX = 0.5; zoomOriginY = 0.5;
+      zoomIndicator.style.display = 'none';
     }
-  }
-
-  function setZoom(feed, scale) {
-    currentZoom[feed] = scale;
-    if (feed === focused) {
-      zoomIndicator.style.display = (scale !== 1) ? 'block' : 'none';
-    }
-    applyTransform(feed);
-  }
-
-  function applyTransform(feed) {
-    const vid = (feed === 'A') ? videoA : videoB;
-    const parts = [];
-    if (flipped[feed]) parts.push('rotate(180deg)');
-    if (mirrored[feed]) parts.push('scaleX(-1)');
-    parts.push(`scale(${currentZoom[feed]})`);
-    vid.style.transform = parts.join(' ');
-  }
-
-  function updateButtonIndicators() {
-    mirrorBtn.classList.toggle('active', mirrored[focused]);
-    flipBtn.classList.toggle('active', flipped[focused]);
-    freezeBtn.classList.toggle('active', frozen[focused]);
-    zoomIndicator.style.display = (currentZoom[focused] !== 1) ? 'block' : 'none';
-    flipIndicator.style.display = flipped[focused] ? 'block' : 'none';
-    freezeOverlay.style.display = frozen[focused] ? 'block' : 'none';
-  }
+  });
 
   resetZoomBtn.addEventListener('click', () => {
-    const vid = (focused === 'A') ? videoA : videoB;
-    vid.style.transformOrigin = '50% 50%';
-    setZoom(focused, 1);
+    currentZoom = 1; zoomOriginX = 0.5; zoomOriginY = 0.5;
+    zoomIndicator.style.display = 'none';
   });
 
-  function toggleMirror() {
-    mirrored[focused] = !mirrored[focused];
-    updateButtonIndicators();
-    applyTransform(focused);
-  }
+  function toggleMirror() { mirrored = !mirrored; mirrorBtn.classList.toggle('active', mirrored); }
   mirrorBtn.addEventListener('click', toggleMirror);
 
   function toggleFlip() {
-    flipped[focused] = !flipped[focused];
-    updateButtonIndicators();
-    applyTransform(focused);
+    flipped = !flipped; flipBtn.classList.toggle('active', flipped);
+    flipIndicator.style.display = flipped ? 'block' : 'none';
   }
   flipBtn.addEventListener('click', toggleFlip);
 
   function toggleFreeze() {
-    const feed = focused;
-    const vid = (feed === 'A') ? videoA : videoB;
-    frozen[feed] = !frozen[feed];
-    updateButtonIndicators();
-
-    if (frozen[feed]) {
-      const canvas = frozenCanvas[feed];
-      canvas.width = vid.videoWidth;
-      canvas.height = vid.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
-      vid.style.backgroundImage = `url(${canvas.toDataURL('image/png')})`;
-      vid.style.backgroundSize = 'contain';
-      vid.style.backgroundPosition = 'center';
-      vid.style.backgroundRepeat = 'no-repeat';
-      vid.pause();
-    } else {
-      vid.style.backgroundImage = 'none';
-      vid.play();
-    }
+    frozen = !frozen; freezeBtn.classList.toggle('active', frozen);
+    freezeOverlay.style.display = frozen ? 'block' : 'none';
   }
   freezeBtn.addEventListener('click', toggleFreeze);
 
@@ -496,185 +805,96 @@
     if (e.key.toLowerCase() === 'f') { toggleFlip(); }
   });
 
-  // Multi-Cam Canvas Recording Compositor
-  function drawFeedInto(ctx, vid, dx, dy, dw, dh, feedKey) {
-    if (!vid.videoWidth) return;
-    const vw = vid.videoWidth, vh = vid.videoHeight;
-    const scale = Math.min(dw / vw, dh / vh);
-    const rw = vw * scale, rh = vh * scale;
-    const rx = dx + (dw - rw) / 2, ry = dy + (dh - rh) / 2;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(dx, dy, dw, dh);
-    ctx.clip();
-
-    ctx.translate(dx + dw / 2, dy + dh / 2);
-    if (flipped[feedKey]) ctx.rotate(Math.PI);
-    if (mirrored[feedKey]) ctx.scale(-1, 1);
-    ctx.scale(currentZoom[feedKey], currentZoom[feedKey]);
-    ctx.translate(-(dx + dw / 2), -(dy + dh / 2));
-
-    ctx.drawImage(vid, rx, ry, rw, rh);
-    ctx.restore();
-  }
-
-  function compositeLoop() {
-    const W = captureCanvas.width, H = captureCanvas.height;
-    captureCtx.fillStyle = '#000';
-    captureCtx.fillRect(0, 0, W, H);
-
-    if (!dualActive) {
-      drawFeedInto(captureCtx, videoA, 0, 0, W, H, 'A');
-    } else {
-      const aMajor = (focused === 'A');
-      const wA = W * (aMajor ? FOCUS_MAJOR : FOCUS_MINOR) / 100;
-      const wB = W - wA;
-      drawFeedInto(captureCtx, videoA, 0, 0, wA, H, 'A');
-      drawFeedInto(captureCtx, videoB, wA, 0, wB, H, 'B');
-    }
-    captureRAF = requestAnimationFrame(compositeLoop);
-  }
-
-  function startRecording() {
-    recordedChunks = [];
-    const canvasStream = captureCanvas.captureStream(30);
-    const audioTrack = streamA ? streamA.getAudioTracks()[0] : null;
-    if (audioTrack) canvasStream.addTrack(audioTrack);
-
-    let mimeType = 'video/webm;codecs=vp9,opus';
-    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
-    try {
-      mediaRecorder = new MediaRecorder(canvasStream, { mimeType });
-    } catch (e) {
-      mediaRecorder = new MediaRecorder(canvasStream);
-    }
-
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) recordedChunks.push(e.data);
-    };
-    mediaRecorder.start(1000);
-    sessionStartTime = Date.now();
-    compositeLoop();
-  }
-
-  // Web Speech API
   function initSpeech() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
-
     recognizer = new SpeechRecognition();
     recognizer.continuous = true;
     recognizer.interimResults = true;
     recognizer.lang = 'en-AU';
 
     recognizer.onresult = (event) => {
-      let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const res = event.results[i];
-        const text = res[0].transcript.trim();
-        if (res.isFinal && text.length > 0) {
+        const result = event.results[i];
+        const text = result[0].transcript.trim();
+        if (result.isFinal && text.length > 0) {
           const type = classify(text);
           const time = elapsedTimeStr();
-          transcriptLog.push({ time, type, text });
-          renderCaption(text, type);
-        } else {
-          interim = text;
+          const entry = { time, type, text };
+          transcriptLog.push(entry);
+          extractCategoriesLocal(text);
+          queueForAiClassification(entry);
         }
       }
-      if (interim) renderCaption(interim, "SPEECH", true);
     };
-
     recognizer.onerror = (e) => {
       if (e.error === 'audio-capture' || e.error === 'not-allowed') {
         try { recognizer.abort(); } catch (err) {}
       }
     };
-
     recognizer.onend = () => {
-      if (streamA) {
-        setTimeout(() => {
-          try { recognizer.start(); } catch (err) {}
-        }, 600);
+      if (mainStream && transcriptionEnabled) {
+        setTimeout(() => { try { recognizer.start(); } catch (err) {} }, 400);
       }
     };
-
     try { recognizer.start(); } catch (e) {}
   }
 
-  function renderCaption(text, type, isInterim) {
-    if (!SHOW_LIVE_CAPTIONS) return;
-    currentCaption.textContent = text;
-    badgeRow.innerHTML = '';
-    if (type === 'STEP') {
-      const b = document.createElement('span');
-      b.className = 'badge step';
-      b.textContent = 'Step';
-      badgeRow.appendChild(b);
-    } else if (type === 'TECHNIQUE') {
-      const b = document.createElement('span');
-      b.className = 'badge technique';
-      b.textContent = 'Technique / Safety';
-      badgeRow.appendChild(b);
-    }
-    if (!isInterim) {
-      const line = document.createElement('div');
-      line.textContent = `[${elapsedTimeStr()}] ${text}`;
-      historyStrip.prepend(line);
-      while (historyStrip.childNodes.length > 2) historyStrip.removeChild(historyStrip.lastChild);
+  async function uploadPayload(base64Video, durationSeconds, sessionTitle, mimeType) {
+    exportStatus.textContent = 'Uploading demonstration package to Google Drive…';
+    try {
+      const result = await postApi({
+        action: 'saveDemonstrationPackage',
+        base64Video: base64Video,
+        transcriptLog: transcriptLog,
+        sessionTitle: sessionTitle,
+        thumbnailBase64: thumbnailBase64,
+        meta: { durationSeconds: durationSeconds, mimeType: mimeType || 'none' }
+      });
+      onSaveSuccess(result);
+    } catch (err) {
+      onSaveFailure(err);
     }
   }
 
-  // Finish & Export
   finishBtn.addEventListener('click', async () => {
     exportOverlay.style.display = 'flex';
-    exportStatus.textContent = 'Packaging video & log…';
+    exportStatus.textContent = 'Packaging demonstration…';
     spinner.style.display = 'block';
     closeExportBtn.style.display = 'none';
     exportLinks.innerHTML = '';
 
     if (recognizer) { try { recognizer.stop(); } catch (e) {} }
-    if (captureRAF) cancelAnimationFrame(captureRAF);
+    if (pendingAiLines.length > 0) { await runAiClassificationBatch(); }
+    stopAiBatchTimer();
+
+    try {
+      const snapshotSource = (mediaRecorder && mediaRecorder.state === 'recording') ? recordCanvas : displayCanvas;
+      thumbnailBase64 = snapshotSource.toDataURL('image/png');
+    } catch (e) { thumbnailBase64 = null; }
 
     const durationSeconds = sessionStartTime ? (Date.now() - sessionStartTime) / 1000 : 0;
-    
-    // Generate snapshot for Doc header
-    let thumbnailBase64 = null;
-    try {
-      thumbnailBase64 = captureCanvas.toDataURL('image/png');
-    } catch (e) {}
+    const sessionTitle = titleInput.value.trim();
 
     if (mediaRecorder && mediaRecorder.state === 'recording') {
-      mediaRecorder.onstop = async () => {
-        exportStatus.textContent = 'Uploading to Google Drive…';
-        const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+      const recorderRef = mediaRecorder;
+      recorderRef.onstop = async () => {
+        exportStatus.textContent = 'Encoding video…';
+        const blob = new Blob(recordedChunks, { type: recorderRef.mimeType || 'video/webm' });
         const reader = new FileReader();
-        reader.onload = function() {
-          google.script.run
-            .withSuccessHandler(onSaveSuccess)
-            .withFailureHandler(onSaveFailure)
-            .saveDemonstrationPackage(
-              reader.result, 
-              transcriptLog, 
-              { durationSeconds: durationSeconds, mimeType: mediaRecorder.mimeType || 'video/webm' },
-              "Classroom Demonstration",
-              thumbnailBase64
-            );
+        reader.onload = async function() {
+          await uploadPayload(reader.result, durationSeconds, sessionTitle, recorderRef.mimeType || 'video/webm');
         };
         reader.readAsDataURL(blob);
       };
-      mediaRecorder.stop();
+      recorderRef.stop();
+      mediaRecorder = null;
+    } else if (transcriptLog.length > 0) {
+      await uploadPayload(null, durationSeconds, sessionTitle, null);
     } else {
-      google.script.run
-        .withSuccessHandler(onSaveSuccess)
-        .withFailureHandler(onSaveFailure)
-        .saveDemonstrationPackage(
-          null, 
-          transcriptLog, 
-          { durationSeconds: durationSeconds, mimeType: 'none' },
-          "Classroom Demonstration",
-          thumbnailBase64
-        );
+      exportStatus.textContent = 'Nothing to save yet — ensure Record or Transcribe is enabled.';
+      spinner.style.display = 'none';
+      closeExportBtn.style.display = 'inline-block';
     }
   });
 
@@ -682,8 +902,8 @@
     spinner.style.display = 'none';
     if (result.success) {
       exportStatus.textContent = 'Saved successfully!';
-      const vLink = result.videoUrl ? `<a href="${result.videoUrl}" target="_blank">Open Video File</a>` : '';
-      exportLinks.innerHTML = `${vLink}<a href="${result.docUrl}" target="_blank">Open Demonstration Doc</a>`;
+      const videoLink = result.videoUrl ? `<a href="${result.videoUrl}" target="_blank">Open Video File</a>` : '';
+      exportLinks.innerHTML = `${videoLink}<a href="${result.docUrl}" target="_blank">Open Demonstration Doc</a>`;
     } else {
       exportStatus.textContent = 'Error: ' + result.message;
     }
@@ -698,17 +918,13 @@
 
   closeExportBtn.addEventListener('click', () => { exportOverlay.style.display = 'none'; });
 
-  // System Boot
   async function boot() {
     try {
-      // Must prompt for initial stream first so device labels unlock
-      await initFeedA(null);
+      resizeCanvases();
+      await initMainMedia(null);
       await enumerateCameras();
-      startRecording();
-      initSpeech();
-    } catch (err) {
-      showToast('Camera/mic access error: ' + err.message);
-    }
+      updateModeText();
+    } catch (err) {}
   }
 
   boot();
